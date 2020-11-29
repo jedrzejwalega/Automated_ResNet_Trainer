@@ -3,12 +3,9 @@ import torch.nn as nn
 from torchsummary import summary
 
 
-class Program():
-    def __init__(self):
-        pass
 
 class ResNet50(nn.Module):
-    def __init__(self, out_activations, in_channels=3):
+    def __init__(self, out_activations, in_channels=1):
         super(ResNet50, self).__init__()
         self.conv1 = nn.Conv2d(in_channels, out_channels=64, stride=2, kernel_size=7, padding=3)
         self.max_pool = nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
@@ -18,6 +15,7 @@ class ResNet50(nn.Module):
         self.bottleneck_layers += [BottleneckBlock(1024, 512,stride=2)] + [BottleneckBlock(2048, 512) for _ in range(2)]
         self.global_avg_pool = nn.AvgPool2d(kernel_size=7)
         self.fully_connected = nn.Linear(2048, out_activations)
+        
     def forward(self, x):
         x = self.conv1(x)
         x = self.max_pool(x)
@@ -63,8 +61,5 @@ class BottleneckBlock(nn.Module):
         x = self.activation(x)
         return x
 
-dummy_data = torch.rand(size=(10,1,224,224))
-dummy_model = ResNet50(20, in_channels=1)
-print(dummy_model(dummy_data).shape)
-# print(summary(ResNet50(1), input_size=(1, 224, 224)))
+
         
