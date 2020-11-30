@@ -49,6 +49,6 @@ def load_mnist(path:str, kind:str='train') -> (torch.Tensor, torch.Tensor):
 
     with gzip.open(images_path, 'rb') as imgpath:
         images = np.frombuffer(imgpath.read(), dtype=np.uint8,
-                               offset=16).reshape(len(labels), 28, 28)
+                               offset=16).reshape(len(labels), 1, 28, 28)
 
-    return (torch.from_numpy(images), torch.from_numpy(labels))
+    return (torch.from_numpy(images).float(), torch.from_numpy(labels).float())

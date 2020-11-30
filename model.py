@@ -9,14 +9,19 @@ class ResNet50(nn.Module):
         super(ResNet50, self).__init__()
         self.conv1 = nn.Conv2d(in_channels, out_channels=64, stride=2, kernel_size=7, padding=3)
         self.max_pool = nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
-        self.bottleneck_layers = [BottleneckBlock(64,64)] + [BottleneckBlock(256, 64) for _ in range(2)]
-        self.bottleneck_layers += [BottleneckBlock(256,128,stride=2)] + [BottleneckBlock(512,128) for _ in range(3)]
-        self.bottleneck_layers += [BottleneckBlock(512, 256,stride=2)] + [BottleneckBlock(1024, 256) for _ in range(5)]
-        self.bottleneck_layers += [BottleneckBlock(1024, 512,stride=2)] + [BottleneckBlock(2048, 512) for _ in range(2)]
+        self.bottleneck_layers = []
+        for params in [(64,64,2,1), (256,128,3,2), (512,256,5,2), (1024,512,2,2)]:
+            self.bottleneck_layer = BottleneckBlock(params[0], params[1], stride=params[3])
+            self.bottleneck_layers.append(self.bottleneck_layer)
+            for _ in range(params[2]):
+                self.bottleneck_layer = BottleneckBlock(params[1]*4, params[1])
+                self.bottleneck_layers.append(self.bottleneck_layer)
+        self.bottleneck_layers = nn.Sequential(*self.bottleneck_layers)
         self.global_avg_pool = nn.AvgPool2d(kernel_size=7)
         self.fully_connected = nn.Linear(2048, out_activations)
-        
+
     def forward(self, x):
+        print(next(self.conv1.parameters()).device)
         x = self.conv1(x)
         x = self.max_pool(x)
 
@@ -45,6 +50,7 @@ class BottleneckBlock(nn.Module):
         self.c3_batchnorm = nn.BatchNorm2d(downsampled_channels*4)
     
     def forward(self, x):
+        print(next(self.c1.parameters()).device)
         identity = x
         x = self.c1(x)
         x = self.c1_batchnorm(x)
@@ -60,6 +66,3 @@ class BottleneckBlock(nn.Module):
         x += identity
         x = self.activation(x)
         return x
-
-
-        
