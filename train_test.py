@@ -47,12 +47,7 @@ class RunManager():
         valid_losses = []
         batch_num = 1
         for batch_x, batch_y in self.train_loader:
-            print(batch_num)
-            t = torch.cuda.get_device_properties(0).total_memory
-            c = torch.cuda.memory_cached(0)
-            a = torch.cuda.memory_allocated(0)
-            f = c-a  # free inside cache
-            print(f"total:{t}\ncached:{c}\nallocated:{a}\nfree{f}\n\n")
+
             batch_x, batch_y = batch_x.to(self.device), batch_y.to(self.device)
             pred = torch.softmax(self.model(batch_x), dim=-1)
             loss = self.loss_func(pred, batch_y)
@@ -60,14 +55,9 @@ class RunManager():
             self.optimizer.zero_grad()
             loss.backward()
             self.optimizer.step()
-            batch_num += 1
 
         self.model.eval()    
         for batch_x, batch_y in self.valid_loader:
-            t = torch.cuda.get_device_properties(0).total_memory
-            c = torch.cuda.memory_cached(0)
-            a = torch.cuda.memory_allocated(0)
-            f = c-a  # free inside cache
             print(f"total:{t}\ncached:{c}\nallocated:{a}\nfree:{f}\n\n")
             batch_x, batch_y = batch_x.to(self.device), batch_y.to(self.device)
             pred = torch.softmax(self.model(batch_x), dim=-1)
