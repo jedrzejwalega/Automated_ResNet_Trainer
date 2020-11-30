@@ -33,8 +33,8 @@ class RunManager():
     
     def make_dataloaders(self, num_workers=1, shuffle=True):
         self.train_loader = torch.utils.data.DataLoader(self.train_dataset, batch_size=self.batch_size, shuffle=shuffle)
-        self.valid_loader = torch.utils.data.DataLoader(self.valid_dataset, batch_size=len(self.valid_dataset), shuffle=shuffle)
-        self.test_loader = torch.utils.data.DataLoader(self.test_dataset, batch_size=len(self.test_dataset), shuffle=shuffle)
+        self.valid_loader = torch.utils.data.DataLoader(self.valid_dataset, batch_size=self.batch_size, shuffle=shuffle)
+        self.test_loader = torch.utils.data.DataLoader(self.test_dataset, batch_size=self.batch_size, shuffle=shuffle)
     
     def train(self):
         self.model = self.model.to(self.device)
@@ -58,10 +58,9 @@ class RunManager():
 
         self.model.eval()    
         for batch_x, batch_y in self.valid_loader:
-            print(f"total:{t}\ncached:{c}\nallocated:{a}\nfree:{f}\n\n")
             batch_x, batch_y = batch_x.to(self.device), batch_y.to(self.device)
             pred = torch.softmax(self.model(batch_x), dim=-1)
-            loss = self.loss_func(pred, batch_x)
+            loss = self.loss_func(pred, batch_y)
             valid_losses.append(loss.item())
         
         return train_losses, valid_losses
@@ -74,9 +73,3 @@ program.make_model(10)
 program.pass_datasets((train_images, train_labels), (test_images, test_labels))
 program.make_dataloaders()
 program.train()
-
-t = torch.cuda.get_device_properties(0).total_memory
-c = torch.cuda.memory_cached(0)
-a = torch.cuda.memory_allocated(0)
-f = c-a  # free inside cache
-print(f"total:{t}\ncached:{c}\nallocated:{a}\nfree{f}\n\n")
