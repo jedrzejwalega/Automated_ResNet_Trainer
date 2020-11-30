@@ -16,7 +16,7 @@ class RunManager():
         self.train_data = None
         self.test_data = None
         use_cuda = torch.cuda.is_available()
-        self.device = torch.device("cpu" if use_cuda else "cpu")
+        self.device = torch.device("cuda" if use_cuda else "cpu")
         self.loss_func = nn.CrossEntropyLoss()
     
     def make_model(self, out_activations, in_channels=1, optimizer=optim.SGD):
@@ -48,10 +48,15 @@ class RunManager():
         batch_num = 1
         for batch_x, batch_y in self.train_loader:
             print(batch_num)
+            t = torch.cuda.get_device_properties(0).total_memory
+            c = torch.cuda.memory_cached(0)
+            a = torch.cuda.memory_allocated(0)
+            f = c-a  # free inside cache
+            print(f"total:{t}\ncached:{c}\nallocated:{a}\nfree{f}\n\n")
             batch_x, batch_y = batch_x.to(self.device), batch_y.to(self.device)
             pred = torch.softmax(self.model(batch_x), dim=-1)
             loss = self.loss_func(pred, batch_y)
-            train_losses.append(loss)
+            train_losses.append(loss.item())
             self.optimizer.zero_grad()
             loss.backward()
             self.optimizer.step()
@@ -59,14 +64,17 @@ class RunManager():
 
         self.model.eval()    
         for batch_x, batch_y in self.valid_loader:
+            t = torch.cuda.get_device_properties(0).total_memory
+            c = torch.cuda.memory_cached(0)
+            a = torch.cuda.memory_allocated(0)
+            f = c-a  # free inside cache
+            print(f"total:{t}\ncached:{c}\nallocated:{a}\nfree:{f}\n\n")
             batch_x, batch_y = batch_x.to(self.device), batch_y.to(self.device)
             pred = torch.softmax(self.model(batch_x), dim=-1)
             loss = self.loss_func(pred, batch_x)
-            valid_losses.append(loss)
+            valid_losses.append(loss.item())
         
         return train_losses, valid_losses
-
-            
 
 input_data.download_mnist("/home/jedrzej/Desktop/fmnist")
 train_images, train_labels = input_data.load_mnist("/home/jedrzej/Desktop/fmnist")
@@ -76,3 +84,9 @@ program.make_model(10)
 program.pass_datasets((train_images, train_labels), (test_images, test_labels))
 program.make_dataloaders()
 program.train()
+
+t = torch.cuda.get_device_properties(0).total_memory
+c = torch.cuda.memory_cached(0)
+a = torch.cuda.memory_allocated(0)
+f = c-a  # free inside cache
+print(f"total:{t}\ncached:{c}\nallocated:{a}\nfree{f}\n\n")

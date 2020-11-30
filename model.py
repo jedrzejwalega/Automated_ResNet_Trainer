@@ -16,12 +16,10 @@ class ResNet50(nn.Module):
                 self.bottleneck_layer = BottleneckBlock(params[1]*4, params[1])
                 self.bottleneck_layers.append(self.bottleneck_layer)
         self.bottleneck_layers = nn.Sequential(*self.bottleneck_layers)
-        self.global_avg_pool = nn.AvgPool2d(kernel_size=7)
+        self.global_avg_pool = nn.AvgPool2d(kernel_size=1)
         self.fully_connected = nn.Linear(2048, out_activations)
 
     def forward(self, x):
-        resize = Resize((224, 224))
-        x = resize(x)
         x = self.conv1(x)
         x = self.max_pool(x)
 
@@ -66,6 +64,3 @@ class BottleneckBlock(nn.Module):
         x += identity
         x = self.activation(x)
         return x
-
-x = torch.tensor([[1,2],[3,4]])
-print(x.shape[:-1])
