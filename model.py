@@ -1,8 +1,7 @@
 import torch
 import torch.nn as nn
 from torchsummary import summary
-
-
+from torchvision.transforms import Resize
 
 class ResNet50(nn.Module):
     def __init__(self, out_activations, in_channels=1):
@@ -21,7 +20,8 @@ class ResNet50(nn.Module):
         self.fully_connected = nn.Linear(2048, out_activations)
 
     def forward(self, x):
-        print(next(self.conv1.parameters()).device)
+        resize = Resize((224, 224))
+        x = resize(x)
         x = self.conv1(x)
         x = self.max_pool(x)
 
@@ -50,11 +50,11 @@ class BottleneckBlock(nn.Module):
         self.c3_batchnorm = nn.BatchNorm2d(downsampled_channels*4)
     
     def forward(self, x):
-        print(next(self.c1.parameters()).device)
         identity = x
         x = self.c1(x)
         x = self.c1_batchnorm(x)
         x = self.activation(x)
+
         
         x = self.c2(x)
         x = self.c2_batchnorm(x)
@@ -66,3 +66,6 @@ class BottleneckBlock(nn.Module):
         x += identity
         x = self.activation(x)
         return x
+
+x = torch.tensor([[1,2],[3,4]])
+print(x.shape[:-1])

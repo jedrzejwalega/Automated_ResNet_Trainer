@@ -51,4 +51,4 @@ def load_mnist(path:str, kind:str='train') -> (torch.Tensor, torch.Tensor):
         images = np.frombuffer(imgpath.read(), dtype=np.uint8,
                                offset=16).reshape(len(labels), 1, 28, 28)
 
-    return (torch.from_numpy(images).float(), torch.from_numpy(labels).float())
+    return (torch.from_numpy(images).float(), torch.from_numpy(labels).long())
