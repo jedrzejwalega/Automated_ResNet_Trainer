@@ -4,13 +4,13 @@ import model
 import torch.optim as optim
 import input_data
 import dataset
+from typing import List,Tuple
 
 class RunManager():
-    def __init__(self, learning_rates, epochs, batch_size=64, gamma=0.1):
+    def __init__(self, learning_rates:List[float], epochs:List[int], batch_size:int=64, gamma:float=0.1):
         self.model = None
         self.batch_size = batch_size
         self.learning_rates = learning_rates
-        self.lr_schedule = iter(self.learning_rates)
         self.optimizer = None
         self.epochs = epochs
         self.train_data = None
@@ -19,11 +19,11 @@ class RunManager():
         self.device = torch.device("cuda" if use_cuda else "cpu")
         self.loss_func = nn.CrossEntropyLoss()
     
-    def make_model(self, out_activations, in_channels=1, optimizer=optim.SGD):
+    def make_model(self, out_activations:int, in_channels:int=1, optimizer=optim.SGD):
         self.model = model.ResNet50(out_activations, in_channels)
-        self.optimizer = optimizer(self.model.parameters(), lr=next(self.lr_schedule), momentum=0.9)
+        self.optimizer = optimizer(self.model.parameters(), lr=0.01, momentum=0.9)
 
-    def pass_datasets(self, train_set, test_set):
+    def pass_datasets(self, train_set:Tuple[torch.FloatTensor, torch.LongTensor], test_set:[Tuple[torch.FloatTensor, torch.LongTensor]]):
         train_set = dataset.ImageDataset(train_set)
         test_set = dataset.ImageDataset(test_set)
         train_len = len(train_set)
@@ -31,18 +31,25 @@ class RunManager():
         self.train_dataset, self.valid_dataset = torch.utils.data.random_split(train_set, lengths=lengths)
         self.test_dataset = test_set
     
-    def make_dataloaders(self, num_workers=1, shuffle=True):
+    def make_dataloaders(self, num_workers:int=1, shuffle:bool=True):
         self.train_loader = torch.utils.data.DataLoader(self.train_dataset, batch_size=self.batch_size, shuffle=shuffle)
         self.valid_loader = torch.utils.data.DataLoader(self.valid_dataset, batch_size=self.batch_size, shuffle=shuffle)
         self.test_loader = torch.utils.data.DataLoader(self.test_dataset, batch_size=self.batch_size, shuffle=shuffle)
     
     def train(self):
         self.model = self.model.to(self.device)
-        train_losses, valid_losses = self.__train_valid_one_epoch(0.1)
+        for lr in self.learning_rates:
+            for epoch_number in self.epochs:
+                print(f"Starting training, lr={lr}")
+                for epoch in range(epoch_number):
+                    train_losses, valid_losses = self.__train_valid_one_epoch(lr)
+                    print(f"Finished {epoch+1} epoch")
+                print(f"Finished training of lr={lr} in {epoch_number} epochs")
 
-    def __train_valid_one_epoch(self, lr):
-        self.model.train()
+    def __train_valid_one_epoch(self, lr:float) -> (list,list):
+        self.__adjust_lr(lr)
         torch.manual_seed(42)
+        self.model.train()
         train_losses = []
         valid_losses = []
         batch_num = 1
@@ -64,11 +71,15 @@ class RunManager():
             valid_losses.append(loss.item())
         
         return train_losses, valid_losses
+    
+    def __adjust_lr(self, new_lr:float) -> None:
+        for param_group in self.optimizer.param_groups:
+            param_group["lr"] = new_lr
 
 input_data.download_mnist("/home/jedrzej/Desktop/fmnist")
 train_images, train_labels = input_data.load_mnist("/home/jedrzej/Desktop/fmnist")
 test_images, test_labels = input_data.load_mnist("/home/jedrzej/Desktop/fmnist")
-program = RunManager([1], 3)
+program = RunManager([1], [3])
 program.make_model(10)
 program.pass_datasets((train_images, train_labels), (test_images, test_labels))
 program.make_dataloaders()
