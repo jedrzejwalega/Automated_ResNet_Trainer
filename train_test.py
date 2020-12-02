@@ -5,6 +5,7 @@ import torch.optim as optim
 import input_data
 import dataset
 from typing import List,Tuple
+from statistics import mean
 
 class RunManager():
     def __init__(self, learning_rates:List[float], epochs:List[int], batch_size:int=64, gamma:float=0.1):
@@ -43,7 +44,9 @@ class RunManager():
                 print(f"Starting training, lr={lr}")
                 for epoch in range(epoch_number):
                     train_losses, valid_losses = self.__train_valid_one_epoch(lr)
-                    print(f"Finished {epoch+1} epoch")
+                    train_loss_mean = mean(train_losses)
+                    valid_loss_mean = mean(valid_losses)
+                    print(f"Finished {epoch+1} epoch, train loss: {train_loss_mean}, valid loss: {valid_loss_mean}")
                 print(f"Finished training of lr={lr} in {epoch_number} epochs")
 
     def __train_valid_one_epoch(self, lr:float) -> (list,list):
@@ -56,7 +59,7 @@ class RunManager():
         for batch_x, batch_y in self.train_loader:
 
             batch_x, batch_y = batch_x.to(self.device), batch_y.to(self.device)
-            pred = torch.softmax(self.model(batch_x), dim=-1)
+            pred = self.model(batch_x)
             loss = self.loss_func(pred, batch_y)
             train_losses.append(loss.item())
             self.optimizer.zero_grad()
@@ -64,11 +67,12 @@ class RunManager():
             self.optimizer.step()
 
         self.model.eval()    
-        for batch_x, batch_y in self.valid_loader:
-            batch_x, batch_y = batch_x.to(self.device), batch_y.to(self.device)
-            pred = torch.softmax(self.model(batch_x), dim=-1)
-            loss = self.loss_func(pred, batch_y)
-            valid_losses.append(loss.item())
+        with torch.no_grad():
+            for batch_x, batch_y in self.valid_loader:
+                batch_x, batch_y = batch_x.to(self.device), batch_y.to(self.device)
+                pred = self.model(batch_x)
+                loss = self.loss_func(pred, batch_y)
+                valid_losses.append(loss.item())
         
         return train_losses, valid_losses
     
@@ -79,7 +83,7 @@ class RunManager():
 input_data.download_mnist("/home/jedrzej/Desktop/fmnist")
 train_images, train_labels = input_data.load_mnist("/home/jedrzej/Desktop/fmnist")
 test_images, test_labels = input_data.load_mnist("/home/jedrzej/Desktop/fmnist")
-program = RunManager([1], [3])
+program = RunManager([0.001], [3])
 program.make_model(10)
 program.pass_datasets((train_images, train_labels), (test_images, test_labels))
 program.make_dataloaders()
