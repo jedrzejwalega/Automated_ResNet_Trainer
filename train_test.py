@@ -12,6 +12,7 @@ import random
 
 class RunManager():
     def __init__(self, learning_rates:List[float], epochs:List[int], batch_size:int=64, gamma:float=0.1):
+        self.__reproducible(seed=42)
         self.model = None
         self.batch_size = batch_size
         self.learning_rates = learning_rates
@@ -22,6 +23,13 @@ class RunManager():
         use_cuda = torch.cuda.is_available()
         self.device = torch.device("cuda" if use_cuda else "cpu")
         self.loss_func = nn.CrossEntropyLoss().to(self.device)
+    
+    def __reproducible(self, seed):
+        random.seed(seed)
+        np.random.seed(seed)
+        torch.manual_seed(seed)
+        torch.backends.cudnn.deterministic = True
+        torch.backends.cudnn.benchmark = False
     
     def make_model(self, out_activations:int, in_channels:int=1, optimizer=optim.SGD):
         self.model = model.ResNet50(out_activations, in_channels)
@@ -44,6 +52,7 @@ class RunManager():
         self.model = self.model.to(self.device)
         for lr in self.learning_rates:
             for epoch_number in self.epochs:
+                self.__reproducible(seed=42)
                 print(f"Starting training, lr={lr}")
                 for epoch in range(epoch_number):
                     start = default_timer()
@@ -82,13 +91,6 @@ class RunManager():
     def __adjust_lr(self, new_lr:float) -> None:
         for param_group in self.optimizer.param_groups:
             param_group["lr"] = new_lr
-
-seed = 42
-random.seed(seed)
-np.random.seed(seed)
-torch.manual_seed(seed)
-torch.backends.cudnn.deterministic = True
-torch.backends.cudnn.benchmark = False
 
 input_data.download_mnist("/home/jedrzej/Desktop/fmnist")
 train_images, train_labels = input_data.load_mnist("/home/jedrzej/Desktop/fmnist")

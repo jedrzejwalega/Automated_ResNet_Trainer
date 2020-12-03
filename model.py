@@ -7,17 +7,9 @@ import random
 
 
 
-
 class ResNet50(nn.Module):
     def __init__(self, out_activations, in_channels=1):
         super(ResNet50, self).__init__()
-        seed = 42
-        random.seed(seed)
-        np.random.seed(seed)
-        torch.manual_seed(seed)
-        torch.backends.cudnn.deterministic = True
-        torch.backends.cudnn.benchmark = False
-        
         self.conv1 = nn.Conv2d(in_channels, out_channels=64, stride=2, kernel_size=7, padding=3)
         self.max_pool = nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
         self.bottleneck_layers = []
