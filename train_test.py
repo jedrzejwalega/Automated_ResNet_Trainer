@@ -9,6 +9,10 @@ from statistics import mean
 from timeit import default_timer
 import numpy as np
 import random
+# from torch.utils.tensorboard import SummaryWriter
+import torchvision
+from functools import partial
+
 
 class RunManager():
     def __init__(self, learning_rates:List[float], epochs:List[int], batch_size:int=64, gamma:float=0.1):
@@ -31,7 +35,10 @@ class RunManager():
         torch.backends.cudnn.deterministic = True
         torch.backends.cudnn.benchmark = False
     
-    def make_model(self, out_activations:int, in_channels:int=1, optimizer=optim.SGD):
+    def model_params(self, out_activations:int, in_channels:int=1, optimizer=optim.SGD):
+        self.__create_model = partial(self.__create_model, out_activations=out_activations, in_channels=in_channels, optimizer=optimizer)
+    
+    def __create_model(self, out_activations:int, in_channels:int=1, optimizer=optim.SGD):
         self.model = model.ResNet50(out_activations, in_channels)
         self.optimizer = optimizer(self.model.parameters(), lr=0.01, momentum=0.9)
 
@@ -49,10 +56,11 @@ class RunManager():
         self.test_loader = torch.utils.data.DataLoader(self.test_dataset, batch_size=self.batch_size, shuffle=False)
     
     def train(self):
-        self.model = self.model.to(self.device)
         for lr in self.learning_rates:
             for epoch_number in self.epochs:
+                self.__create_model()
                 self.__reproducible(seed=42)
+                self.model = self.model.to(self.device)
                 print(f"Starting training, lr={lr}")
                 for epoch in range(epoch_number):
                     start = default_timer()
@@ -64,6 +72,11 @@ class RunManager():
                 print(f"Finished training of lr={lr} in {epoch_number} epochs")
     
     def __train_valid_one_epoch(self, lr:float) -> (list,list):
+        # tb = SummaryWriter()
+        # images, labels = next(iter(train_loader))
+        # grid = torchvision.utils.make_grid(images)
+        # tb.add_image("images", grid)
+        # tb.add_graph(self.model, )
         self.__adjust_lr(lr)
         torch.manual_seed(42)
         self.model.train()
@@ -96,7 +109,7 @@ input_data.download_mnist("/home/jedrzej/Desktop/fmnist")
 train_images, train_labels = input_data.load_mnist("/home/jedrzej/Desktop/fmnist")
 test_images, test_labels = input_data.load_mnist("/home/jedrzej/Desktop/fmnist")
 program = RunManager([0.001], [2])
-program.make_model(10)
+program.model_params(10)
 program.pass_datasets((train_images, train_labels), (test_images, test_labels))
 program.make_dataloaders()
 program.train()
