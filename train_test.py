@@ -9,19 +9,20 @@ from statistics import mean
 from timeit import default_timer
 import numpy as np
 import random
-# from torch.utils.tensorboard import SummaryWriter
+from torch.utils.tensorboard import SummaryWriter
 import torchvision
 from functools import partial
-
+from itertools import product
 
 class RunManager():
-    def __init__(self, learning_rates:List[float], epochs:List[int], batch_size:int=64, gamma:float=0.1):
+    def __init__(self, learning_rates:List[float], epochs:List[int], batch_size:List[int]=[64], gamma:List[float]=[0.1]):
         self.__reproducible(seed=42)
+        self.hyperparameters = dict(learning_rates=learning_rates,
+                                epochs=epochs,
+                                batch_size=batch_size,
+                                gamma=gamma)
         self.model = None
-        self.batch_size = batch_size
-        self.learning_rates = learning_rates
         self.optimizer = None
-        self.epochs = epochs
         self.train_data = None
         self.test_data = None
         use_cuda = torch.cuda.is_available()
@@ -38,11 +39,11 @@ class RunManager():
     def model_params(self, out_activations:int, in_channels:int=1, optimizer=optim.SGD):
         self.__create_model = partial(self.__create_model, out_activations=out_activations, in_channels=in_channels, optimizer=optimizer)
     
-    def __create_model(self, out_activations:int, in_channels:int=1, optimizer=optim.SGD):
+    def __create_model(self, lr, out_activations:int, in_channels:int=1, optimizer=optim.SGD):
         self.model = model.ResNet50(out_activations, in_channels)
-        self.optimizer = optimizer(self.model.parameters(), lr=0.01, momentum=0.9)
+        self.optimizer = optimizer(self.model.parameters(), lr=lr, momentum=0.9)
 
-    def pass_datasets(self, train_set:Tuple[torch.FloatTensor, torch.LongTensor], test_set:[Tuple[torch.FloatTensor, torch.LongTensor]]):
+    def pass_datasets(self, train_set:Tuple[torch.FloatTensor, torch.LongTensor], test_set:Tuple[torch.FloatTensor, torch.LongTensor]):
         train_set = dataset.ImageDataset(train_set)
         test_set = dataset.ImageDataset(test_set)
         train_len = len(train_set)
@@ -50,35 +51,38 @@ class RunManager():
         self.train_dataset, self.valid_dataset = torch.utils.data.random_split(train_set, lengths=lengths, generator=torch.Generator().manual_seed(42))
         self.test_dataset = test_set
     
-    def make_dataloaders(self, num_workers:int=1, shuffle:bool=True):
-        self.train_loader = torch.utils.data.DataLoader(self.train_dataset, batch_size=self.batch_size, shuffle=False)
-        self.valid_loader = torch.utils.data.DataLoader(self.valid_dataset, batch_size=self.batch_size, shuffle=False)
-        self.test_loader = torch.utils.data.DataLoader(self.test_dataset, batch_size=self.batch_size, shuffle=False)
+    def __make_dataloaders(self, batch_size:int=64, num_workers:int=1, shuffle:bool=True):
+        self.train_loader = torch.utils.data.DataLoader(self.train_dataset, batch_size=batch_size, shuffle=shuffle)
+        self.valid_loader = torch.utils.data.DataLoader(self.valid_dataset, batch_size=batch_size, shuffle=shuffle)
+        self.test_loader = torch.utils.data.DataLoader(self.test_dataset, batch_size=batch_size, shuffle=shuffle)
     
     def train(self):
-        for lr in self.learning_rates:
-            for epoch_number in self.epochs:
-                self.__create_model()
+        parameters = [v for v in self.hyperparameters.values()]
+        for lr, epoch_number, batch_size, gamma in product(*parameters):
                 self.__reproducible(seed=42)
+                self.__make_dataloaders(batch_size)
+                self.__create_model(lr=lr)
                 self.model = self.model.to(self.device)
-                print(f"Starting training, lr={lr}")
+                tb = SummaryWriter(comment=f" lr={lr} epochs={epoch_number} batch size={batch_size}")
+                self.__setup_tensorboard_basics(tb)
+                print(f"Starting training, lr={lr}, batch size={batch_size}, gamma={gamma} for {epoch_number} epochs")
                 for epoch in range(epoch_number):
                     start = default_timer()
                     train_losses, valid_losses = self.__train_valid_one_epoch(lr)
                     stop = default_timer()
                     train_loss_mean = mean(train_losses)
                     valid_loss_mean = mean(valid_losses)
+                    tb.add_scalar("train_loss", train_loss_mean, epoch)
+                    tb.add_scalar("valid_loss", valid_loss_mean, epoch)
+                    for param_name, param in self.model.named_parameters():
+                        tb.add_histogram(param_name, param, epoch)
+                        tb.add_histogram(f"{param_name} gradient", param.grad, epoch)
                     print(f"Finished {epoch+1} epoch in {stop-start}s, train loss: {train_loss_mean}, valid loss: {valid_loss_mean}")
-                print(f"Finished training of lr={lr} in {epoch_number} epochs")
+                tb.close()
+                print(f"Finished training of lr={lr}, batch size={batch_size}, gamma={gamma} for {epoch_number} epochs\n")
     
-    def __train_valid_one_epoch(self, lr:float) -> (list,list):
-        # tb = SummaryWriter()
-        # images, labels = next(iter(train_loader))
-        # grid = torchvision.utils.make_grid(images)
-        # tb.add_image("images", grid)
-        # tb.add_graph(self.model, )
+    def __train_valid_one_epoch(self, lr:float) -> Tuple[List[float], List[float]]:
         self.__adjust_lr(lr)
-        torch.manual_seed(42)
         self.model.train()
         train_losses = []
         valid_losses = []
@@ -101,15 +105,30 @@ class RunManager():
        
         return train_losses, valid_losses
     
+    def __setup_tensorboard_basics(self, tb) -> None:
+        images, labels = next(iter(self.train_loader))
+        grid = torchvision.utils.make_grid(images)
+        tb.add_image("images", grid)
+        tb.add_graph(self.model, images.cuda())
+
     def __adjust_lr(self, new_lr:float) -> None:
         for param_group in self.optimizer.param_groups:
             param_group["lr"] = new_lr
+    
+    def __add_tensorboard_stats(self, tb, loss, epoch, mode="train"):
+        mode = mode.capitalize()
+        tb.add_scalar(f"{mode}_loss", loss, epoch)
+        if mode is "Train":
+            for param_name, param in self.model.named_parameters():
+                print(param)
+                tb.add_histogram(f"{param_name} bias", self.model.param_name.bias, epoch)
+                tb.add_histogram(f"{param_name} weights", self.model.param_name.weight, epoch)
+                tb.add_histogram(f"{param_name} gradient", self.model.param_name.grad, epoch)
 
 input_data.download_mnist("/home/jedrzej/Desktop/fmnist")
 train_images, train_labels = input_data.load_mnist("/home/jedrzej/Desktop/fmnist")
 test_images, test_labels = input_data.load_mnist("/home/jedrzej/Desktop/fmnist")
-program = RunManager([0.001], [2])
+program = RunManager([0.001, 0.0001], [5])
 program.model_params(10)
 program.pass_datasets((train_images, train_labels), (test_images, test_labels))
-program.make_dataloaders()
 program.train()
