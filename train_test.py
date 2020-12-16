@@ -13,6 +13,7 @@ from torch.utils.tensorboard import SummaryWriter
 import torchvision
 from functools import partial
 from itertools import product
+from collections import namedtuple
 
 class RunManager():
     def __init__(self, learning_rates:List[float], epochs:List[int], batch_size:List[int]=[64], gamma:List[float]=[0.1]):
@@ -28,6 +29,7 @@ class RunManager():
         use_cuda = torch.cuda.is_available()
         self.device = torch.device("cuda" if use_cuda else "cpu")
         self.loss_func = nn.CrossEntropyLoss().to(self.device)
+        self.results = namedtuple("results", "train_losses valid_losses train_accuracies valid_accuracies")
     
     def __reproducible(self, seed):
         random.seed(seed)
@@ -68,16 +70,20 @@ class RunManager():
                 print(f"Starting training, lr={lr}, batch size={batch_size}, gamma={gamma} for {epoch_number} epochs")
                 for epoch in range(epoch_number):
                     start = default_timer()
-                    train_losses, valid_losses = self.__train_valid_one_epoch(lr)
+                    result = self.__train_valid_one_epoch(lr)
                     stop = default_timer()
-                    train_loss_mean = mean(train_losses)
-                    valid_loss_mean = mean(valid_losses)
-                    tb.add_scalar("train_loss", train_loss_mean, epoch)
-                    tb.add_scalar("valid_loss", valid_loss_mean, epoch)
+                    train_loss_mean = mean(result.train_losses)
+                    valid_loss_mean = mean(result.valid_losses)
+                    train_accuracy_mean = mean(result.train_accuracies)
+                    valid_accuracy_mean = mean(result.valid_accuracies)
+                    tb.add_scalar("Train_loss", train_loss_mean, epoch)
+                    tb.add_scalar("Valid_loss", valid_loss_mean, epoch)
+                    tb.add_scalar("Train_accuracy", train_accuracy_mean, epoch)
+                    tb.add_scalar("Valid_accuracy", valid_accuracy_mean, epoch)
                     for param_name, param in self.model.named_parameters():
                         tb.add_histogram(param_name, param, epoch)
                         tb.add_histogram(f"{param_name} gradient", param.grad, epoch)
-                    print(f"Finished {epoch+1} epoch in {stop-start}s, train loss: {train_loss_mean}, valid loss: {valid_loss_mean}")
+                    print(f"Finished {epoch+1} epoch in {stop-start}s; train loss: {train_loss_mean}, valid loss: {valid_loss_mean}; train accuracy: {train_accuracy_mean*100}%, valid_accuracy: {valid_accuracy_mean*100}%")
                 tb.close()
                 print(f"Finished training of lr={lr}, batch size={batch_size}, gamma={gamma} for {epoch_number} epochs\n")
     
@@ -86,9 +92,13 @@ class RunManager():
         self.model.train()
         train_losses = []
         valid_losses = []
+        train_accuracies = []
+        valid_accuracies = []
         for batch_x, batch_y in self.train_loader:
             batch_x, batch_y = batch_x.to(self.device), batch_y.to(self.device)
             pred = self.model(batch_x)
+            accuracy = self.__accuracy(pred, batch_y)
+            train_accuracies.append(accuracy)
             loss = self.loss_func(pred, batch_y)
             train_losses.append(loss.item())
             self.optimizer.zero_grad()
@@ -100,10 +110,18 @@ class RunManager():
             for batch_x, batch_y in self.valid_loader:
                 batch_x, batch_y = batch_x.to(self.device), batch_y.to(self.device)
                 pred = self.model(batch_x)
+                valid_accuracy = self.__accuracy(pred, batch_y)
+                valid_accuracies.append(valid_accuracy)
                 loss = self.loss_func(pred, batch_y)
                 valid_losses.append(loss.item())
        
-        return train_losses, valid_losses
+        return self.results(train_losses, valid_losses, train_accuracies, valid_accuracies)
+    
+    def __accuracy(self, pred, batch_y):
+        predicted_classes = torch.argmax(pred, dim=1)
+        correct = (predicted_classes == batch_y).float().sum()
+        accuracy = (correct/batch_y.shape[0]).item()
+        return accuracy
     
     def __setup_tensorboard_basics(self, tb) -> None:
         images, labels = next(iter(self.train_loader))
@@ -128,7 +146,7 @@ class RunManager():
 input_data.download_mnist("/home/jedrzej/Desktop/fmnist")
 train_images, train_labels = input_data.load_mnist("/home/jedrzej/Desktop/fmnist")
 test_images, test_labels = input_data.load_mnist("/home/jedrzej/Desktop/fmnist")
-program = RunManager([0.001, 0.0001], [5])
+program = RunManager([0.001, 0.0001], [15])
 program.model_params(10)
 program.pass_datasets((train_images, train_labels), (test_images, test_labels))
 program.train()
