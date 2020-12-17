@@ -15,15 +15,18 @@ from functools import partial
 from itertools import product
 from collections import namedtuple
 from pickle import dumps, loads
+import fastai.learner
+import fastai.data
 
 class RunManager():
-    def __init__(self, learning_rates:List[float], epochs:List[int], batch_size:List[int]=[64], gamma:List[float]=[0.1]):
+    def __init__(self, learning_rates:List[float], epochs:List[int], batch_size:List[int]=[64], gamma:List[float]=[0.1], optimizer=optim.SGD):
         self.__reproducible(seed=42)
         self.hyperparameters = dict(learning_rates=learning_rates,
                                 epochs=epochs,
                                 batch_size=batch_size,
                                 gamma=gamma)
         self.model = None
+        self.optimizer_algorythm = optimizer
         self.optimizer = None
         self.train_data = None
         self.test_data = None
@@ -41,11 +44,14 @@ class RunManager():
         torch.backends.cudnn.deterministic = True
         torch.backends.cudnn.benchmark = False
     
-    def model_params(self, out_activations:int, in_channels:int=1, optimizer=optim.SGD):
-        self.__create_model = partial(self.__create_model, out_activations=out_activations, in_channels=in_channels, optimizer=optimizer)
+    def model_params(self, out_activations:int, in_channels:int=1):
+        self.__create_model = partial(self.__create_model, out_activations=out_activations, in_channels=in_channels)
+        self.__create_optimizer = partial(self.__create_optimizer, optimizer=self.optimizer_algorythm)
     
-    def __create_model(self, lr:float, out_activations:int, in_channels:int=1, optimizer=optim.SGD):
+    def __create_model(self, out_activations:int, in_channels:int=1):
         self.model = model.ResNet50(out_activations, in_channels)
+    
+    def __create_optimizer(self, lr:float, optimizer=optim.SGD):
         self.optimizer = optimizer(self.model.parameters(), lr=lr, momentum=0.9)
 
     def pass_datasets(self, train_set:Tuple[torch.FloatTensor, torch.LongTensor], test_set:Tuple[torch.FloatTensor, torch.LongTensor]):
@@ -64,7 +70,8 @@ class RunManager():
                 hyperparams = hyperparam_combination(*hyperparams)
                 self.__reproducible(seed=42)
                 self.__make_dataloaders(hyperparams.batch_size)
-                self.__create_model(lr=hyperparams.lr)
+                self.__create_model()
+                self.__create_optimizer(lr=hyperparams.lr)
                 self.model = self.model.to(self.device)
                 tb = self.__setup_tensorboard_basics(hyperparams)
                 print(f"Starting training, lr={hyperparams.lr}, batch size={hyperparams.batch_size}, gamma={hyperparams.gamma} for {hyperparams.epoch_number} epochs")
@@ -75,7 +82,7 @@ class RunManager():
                     mean_result = averaged_epoch_results(*map(mean, result))
                     self.__update_tensorboard_plots(tb, mean_result, epoch)
                     self.__save_model_if_best(mean_result, hyperparams, epoch+1)
-                    print(f"Finished {epoch+1} epoch in {stop-start}s; train loss: {mean_result.train_loss_mean}, valid loss: {mean_result.valid_loss_mean}; train accuracy: {mean_result.train_accuracy_mean*100}%, valid_accuracy: {mean_result.valid_accuracy_mean*100}%")
+                    print(f"Finished epoch {epoch+1} in {stop-start}s; train loss: {mean_result.train_loss_mean}, valid loss: {mean_result.valid_loss_mean}; train accuracy: {mean_result.train_accuracy_mean*100}%, valid_accuracy: {mean_result.valid_accuracy_mean*100}%")
                 tb.close()
                 print(f"Finished training of lr={hyperparams.lr}, batch size={hyperparams.batch_size}, gamma={hyperparams.gamma} for {hyperparams.epoch_number} epochs\n" + "-" * 20 + "\n")
     
@@ -156,8 +163,7 @@ class RunManager():
                                 shuffle=False,
                                 mode="test")
         self.model.eval()
-        word_end = "nd" if self.best_run.epoch >= 2 else "st"
-        print(f"Starting testing, model from: {self.best_run.epoch}{word_end} epoch, lr={self.best_run.hyperparams.lr}, batch_size={self.best_run.hyperparams.batch_size}, gamma={self.best_run.hyperparams.gamma}")
+        print(f"Starting testing, model from epoch number {self.best_run.epoch}, lr={self.best_run.hyperparams.lr}, batch_size={self.best_run.hyperparams.batch_size}, gamma={self.best_run.hyperparams.gamma}")
         test_losses = []
         test_accuracies = []
         with torch.no_grad():
@@ -172,11 +178,21 @@ class RunManager():
         test_accuracy_mean = mean(test_accuracies)
         print(f"Finished testing, testing loss: {test_loss_mean}, test accuracy: {test_accuracy_mean}\n" + "-" * 20)
 
+    def find_best_lr(self, shuffle=True):
+        self.__make_dataloaders()
+        self.__create_model()
+        dl_train = fastai.data.load.DataLoader(self.train_dataset, bs=self.hyperparameters["batch_size"][0], shuffle=shuffle)
+        dl_valid = fastai.data.load.DataLoader(self.valid_dataset, bs=self.hyperparameters["batch_size"][0], shuffle=shuffle)
+        dls = fastai.data.core.DataLoaders(dl_train, dl_valid, device=self.device)
+        learn = fastai.learner.Learner(dls, model=self.model, loss_func=self.loss_func)
+        learn.lr_find()
+
 input_data.download_mnist("/home/jedrzej/Desktop/fmnist")
 train_images, train_labels = input_data.load_mnist("/home/jedrzej/Desktop/fmnist")
 test_images, test_labels = input_data.load_mnist("/home/jedrzej/Desktop/fmnist")
-program = RunManager([0.001, 0.0001], [2])
+program = RunManager([0.001, 0.0001], [5])
 program.model_params(10)
 program.pass_datasets((train_images, train_labels), (test_images, test_labels))
+program.find_best_lr()
 program.train()
 program.test()
