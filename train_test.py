@@ -14,7 +14,7 @@ import torchvision
 from functools import partial
 from itertools import product
 from collections import namedtuple
-from pickle import dumps
+from pickle import dumps, loads
 
 class RunManager():
     def __init__(self, learning_rates:List[float], epochs:List[int], batch_size:List[int]=[64], gamma:List[float]=[0.1]):
@@ -30,10 +30,9 @@ class RunManager():
         use_cuda = torch.cuda.is_available()
         self.device = torch.device("cuda" if use_cuda else "cpu")
         self.loss_func = nn.CrossEntropyLoss().to(self.device)
-        self.results = namedtuple("results", "train_losses valid_losses train_accuracies valid_accuracies")
-        self.best_valid_loss = float("inf")
-        self.best_model = None
-        self.best_optimizer = None
+        self.__results = namedtuple("results", "train_losses valid_losses train_accuracies valid_accuracies")
+        self.__run = namedtuple("run", "valid_loss_mean model optimizer hyperparams epoch")
+        self.best_run = self.__run(float("inf"), None, None, None, None)
     
     def __reproducible(self, seed):
         random.seed(seed)
@@ -75,15 +74,17 @@ class RunManager():
                     stop = default_timer()
                     mean_result = averaged_epoch_results(*map(mean, result))
                     self.__update_tensorboard_plots(tb, mean_result, epoch)
-                    self.__save_model_if_best(mean_result)
+                    self.__save_model_if_best(mean_result, hyperparams, epoch+1)
                     print(f"Finished {epoch+1} epoch in {stop-start}s; train loss: {mean_result.train_loss_mean}, valid loss: {mean_result.valid_loss_mean}; train accuracy: {mean_result.train_accuracy_mean*100}%, valid_accuracy: {mean_result.valid_accuracy_mean*100}%")
                 tb.close()
                 print(f"Finished training of lr={hyperparams.lr}, batch size={hyperparams.batch_size}, gamma={hyperparams.gamma} for {hyperparams.epoch_number} epochs\n" + "-" * 20 + "\n")
     
-    def __make_dataloaders(self, batch_size:int=64, num_workers:int=1, shuffle:bool=True):
-        self.train_loader = torch.utils.data.DataLoader(self.train_dataset, batch_size=batch_size, shuffle=shuffle)
-        self.valid_loader = torch.utils.data.DataLoader(self.valid_dataset, batch_size=batch_size, shuffle=shuffle)
-        self.test_loader = torch.utils.data.DataLoader(self.test_dataset, batch_size=batch_size, shuffle=shuffle)
+    def __make_dataloaders(self, batch_size:int=64, num_workers:int=1, shuffle:bool=True, mode="train"):
+        if mode=="train":
+            self.train_loader = torch.utils.data.DataLoader(self.train_dataset, batch_size=batch_size, shuffle=shuffle)
+            self.valid_loader = torch.utils.data.DataLoader(self.valid_dataset, batch_size=batch_size, shuffle=shuffle)
+        elif mode=="test":
+            self.test_loader = torch.utils.data.DataLoader(self.test_dataset, batch_size=batch_size, shuffle=shuffle)
 
     def __setup_tensorboard_basics(self, hyperparams, mode="train") -> SummaryWriter:
         tb = SummaryWriter(comment=f" {mode} lr={hyperparams.lr} epochs={hyperparams.epoch_number} batch size={hyperparams.batch_size}")
@@ -121,7 +122,7 @@ class RunManager():
                 loss = self.loss_func(pred, batch_y)
                 valid_losses.append(loss.item())
         
-        return self.results(train_losses, valid_losses, train_accuracies, valid_accuracies)
+        return self.__results(train_losses, valid_losses, train_accuracies, valid_accuracies)
 
     def __adjust_lr(self, new_lr:float) -> None:
         for param_group in self.optimizer.param_groups:
@@ -142,15 +143,34 @@ class RunManager():
             tb.add_histogram(param_name, param, epoch)
             tb.add_histogram(f"{param_name} gradient", param.grad, epoch)
     
-    def __save_model_if_best(self, mean_result):
-        print(type(mean_result))
-        if mean_result.valid_loss_mean < self.best_valid_loss:
-            self.best_model = dumps(self.model)
-            self.best_optimizer = dumps(self.optimizer)
-            self.best_valid_loss = mean_result.valid_loss_mean
+    def __save_model_if_best(self, mean_result, hyperparams, epoch):
+        if mean_result.valid_loss_mean < self.best_run.valid_loss_mean:
+            best_model = dumps(self.model)
+            best_optimizer = dumps(self.optimizer)
+            best_valid_loss_mean = mean_result.valid_loss_mean
+            self.best_run = self.__run(best_valid_loss_mean, best_model, best_optimizer, hyperparams, epoch)
 
     def test(self):
-        pass
+        self.model = loads(self.best_run.model)
+        self.__make_dataloaders(batch_size=self.best_run.hyperparams.batch_size,
+                                shuffle=False,
+                                mode="test")
+        self.model.eval()
+        word_end = "nd" if self.best_run.epoch >= 2 else "st"
+        print(f"Starting testing, model from: {self.best_run.epoch}{word_end} epoch, lr={self.best_run.hyperparams.lr}, batch_size={self.best_run.hyperparams.batch_size}, gamma={self.best_run.hyperparams.gamma}")
+        test_losses = []
+        test_accuracies = []
+        with torch.no_grad():
+            for batch_x, batch_y in self.test_loader:
+                batch_x, batch_y = batch_x.to(self.device), batch_y.to(self.device)
+                pred = self.model(batch_x)
+                test_accuracy = self.__accuracy(pred, batch_y)
+                test_accuracies.append(test_accuracy)
+                loss = self.loss_func(pred, batch_y)
+                test_losses.append(loss.item())
+        test_loss_mean = mean(test_losses)
+        test_accuracy_mean = mean(test_accuracies)
+        print(f"Finished testing, testing loss: {test_loss_mean}, test accuracy: {test_accuracy_mean}\n" + "-" * 20)
 
 input_data.download_mnist("/home/jedrzej/Desktop/fmnist")
 train_images, train_labels = input_data.load_mnist("/home/jedrzej/Desktop/fmnist")
@@ -159,3 +179,4 @@ program = RunManager([0.001, 0.0001], [2])
 program.model_params(10)
 program.pass_datasets((train_images, train_labels), (test_images, test_labels))
 program.train()
+program.test()
