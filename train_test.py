@@ -65,6 +65,7 @@ class RunManager():
     def train(self):
         all_hyperparameters = [v for v in self.hyperparameters.values()]
         hyperparam_combination = namedtuple("hyperparam_combination", "lr epoch_number batch_size gamma")
+        averaged_epoch_results = namedtuple("mean_results", "train_loss_mean valid_loss_mean train_accuracy_mean valid_accuracy_mean")
         for hyperparams in product(*all_hyperparameters):
                 hyperparams = hyperparam_combination(*hyperparams)
                 self.__reproducible(seed=42)
@@ -77,22 +78,14 @@ class RunManager():
                     start = default_timer()
                     result = self.__train_valid_one_epoch(hyperparams.lr)
                     stop = default_timer()
-                    train_loss_mean = mean(result.train_losses)
-                    valid_loss_mean = mean(result.valid_losses)
-                    train_accuracy_mean = mean(result.train_accuracies)
-                    valid_accuracy_mean = mean(result.valid_accuracies)
-                    tb.add_scalar("Train_loss", train_loss_mean, epoch)
-                    tb.add_scalar("Valid_loss", valid_loss_mean, epoch)
-                    tb.add_scalar("Train_accuracy", train_accuracy_mean, epoch)
-                    tb.add_scalar("Valid_accuracy", valid_accuracy_mean, epoch)
-                    for param_name, param in self.model.named_parameters():
-                        tb.add_histogram(param_name, param, epoch)
-                        tb.add_histogram(f"{param_name} gradient", param.grad, epoch)
-                    if valid_loss_mean < self.best_valid_loss:
+                    mean_result = averaged_epoch_results(*map(mean, result))
+                    self.__update_tensorboard_plots(tb, mean_result, epoch)
+                    
+                    if mean_result.valid_loss_mean < self.best_valid_loss:
                         self.best_model = dumps(self.model)
                         self.best_optimizer = dumps(self.optimizer)
-                        self.best_valid_loss = valid_loss_mean
-                    print(f"Finished {epoch+1} epoch in {stop-start}s; train loss: {train_loss_mean}, valid loss: {valid_loss_mean}; train accuracy: {train_accuracy_mean*100}%, valid_accuracy: {valid_accuracy_mean*100}%")
+                        self.best_valid_loss = mean_result.valid_loss_mean
+                    print(f"Finished {epoch+1} epoch in {stop-start}s; train loss: {mean_result.train_loss_mean}, valid loss: {mean_result.valid_loss_mean}; train accuracy: {mean_result.train_accuracy_mean*100}%, valid_accuracy: {mean_result.valid_accuracy_mean*100}%")
                 tb.close()
                 print(f"Finished training of lr={hyperparams.lr}, batch size={hyperparams.batch_size}, gamma={hyperparams.gamma} for {hyperparams.epoch_number} epochs\n" + "-" * 20 + "\n")
     
@@ -144,15 +137,14 @@ class RunManager():
         for param_group in self.optimizer.param_groups:
             param_group["lr"] = new_lr
     
-    def __add_tensorboard_stats(self, tb, loss, epoch, mode="train"):
-        mode = mode.capitalize()
-        tb.add_scalar(f"{mode}_loss", loss, epoch)
-        if mode is "Train":
-            for param_name, param in self.model.named_parameters():
-                print(param)
-                tb.add_histogram(f"{param_name} bias", self.model.param_name.bias, epoch)
-                tb.add_histogram(f"{param_name} weights", self.model.param_name.weight, epoch)
-                tb.add_histogram(f"{param_name} gradient", self.model.param_name.grad, epoch)
+    def __update_tensorboard_plots(self, tb, mean_result, epoch):
+        tb.add_scalar("Train_loss", mean_result.train_loss_mean, epoch)
+        tb.add_scalar("Valid_loss", mean_result.valid_loss_mean, epoch)
+        tb.add_scalar("Train_accuracy", mean_result.train_accuracy_mean, epoch)
+        tb.add_scalar("Valid_accuracy", mean_result.valid_accuracy_mean, epoch)
+        for param_name, param in self.model.named_parameters():
+            tb.add_histogram(param_name, param, epoch)
+            tb.add_histogram(f"{param_name} gradient", param.grad, epoch)
 
     def test(self):
         pass
@@ -160,7 +152,7 @@ class RunManager():
 input_data.download_mnist("/home/jedrzej/Desktop/fmnist")
 train_images, train_labels = input_data.load_mnist("/home/jedrzej/Desktop/fmnist")
 test_images, test_labels = input_data.load_mnist("/home/jedrzej/Desktop/fmnist")
-program = RunManager([0.001, 0.0001], [5])
+program = RunManager([0.001, 0.0001], [2])
 program.model_params(10)
 program.pass_datasets((train_images, train_labels), (test_images, test_labels))
 program.train()
