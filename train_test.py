@@ -57,15 +57,10 @@ class RunManager():
         self.train_dataset, self.valid_dataset = torch.utils.data.random_split(train_set, lengths=lengths, generator=torch.Generator().manual_seed(42))
         self.test_dataset = test_set
     
-    def __make_dataloaders(self, batch_size:int=64, num_workers:int=1, shuffle:bool=True):
-        self.train_loader = torch.utils.data.DataLoader(self.train_dataset, batch_size=batch_size, shuffle=shuffle)
-        self.valid_loader = torch.utils.data.DataLoader(self.valid_dataset, batch_size=batch_size, shuffle=shuffle)
-        self.test_loader = torch.utils.data.DataLoader(self.test_dataset, batch_size=batch_size, shuffle=shuffle)
-    
     def train(self):
         all_hyperparameters = [v for v in self.hyperparameters.values()]
         hyperparam_combination = namedtuple("hyperparam_combination", "lr epoch_number batch_size gamma")
-        averaged_epoch_results = namedtuple("mean_results", "train_loss_mean valid_loss_mean train_accuracy_mean valid_accuracy_mean")
+        averaged_epoch_results = namedtuple("averaged_epoch_results", "train_loss_mean valid_loss_mean train_accuracy_mean valid_accuracy_mean")
         for hyperparams in product(*all_hyperparameters):
                 hyperparams = hyperparam_combination(*hyperparams)
                 self.__reproducible(seed=42)
@@ -80,14 +75,23 @@ class RunManager():
                     stop = default_timer()
                     mean_result = averaged_epoch_results(*map(mean, result))
                     self.__update_tensorboard_plots(tb, mean_result, epoch)
-                    
-                    if mean_result.valid_loss_mean < self.best_valid_loss:
-                        self.best_model = dumps(self.model)
-                        self.best_optimizer = dumps(self.optimizer)
-                        self.best_valid_loss = mean_result.valid_loss_mean
+                    self.__save_model_if_best(mean_result)
                     print(f"Finished {epoch+1} epoch in {stop-start}s; train loss: {mean_result.train_loss_mean}, valid loss: {mean_result.valid_loss_mean}; train accuracy: {mean_result.train_accuracy_mean*100}%, valid_accuracy: {mean_result.valid_accuracy_mean*100}%")
                 tb.close()
                 print(f"Finished training of lr={hyperparams.lr}, batch size={hyperparams.batch_size}, gamma={hyperparams.gamma} for {hyperparams.epoch_number} epochs\n" + "-" * 20 + "\n")
+    
+    def __make_dataloaders(self, batch_size:int=64, num_workers:int=1, shuffle:bool=True):
+        self.train_loader = torch.utils.data.DataLoader(self.train_dataset, batch_size=batch_size, shuffle=shuffle)
+        self.valid_loader = torch.utils.data.DataLoader(self.valid_dataset, batch_size=batch_size, shuffle=shuffle)
+        self.test_loader = torch.utils.data.DataLoader(self.test_dataset, batch_size=batch_size, shuffle=shuffle)
+
+    def __setup_tensorboard_basics(self, hyperparams, mode="train") -> SummaryWriter:
+        tb = SummaryWriter(comment=f" {mode} lr={hyperparams.lr} epochs={hyperparams.epoch_number} batch size={hyperparams.batch_size}")
+        images, labels = next(iter(self.train_loader))
+        grid = torchvision.utils.make_grid(images)
+        tb.add_image("images", grid)
+        tb.add_graph(self.model, images.cuda())
+        return tb    
     
     def __train_valid_one_epoch(self, lr:float) -> Tuple[List[float], List[float]]:
         self.__adjust_lr(lr)
@@ -118,24 +122,16 @@ class RunManager():
                 valid_losses.append(loss.item())
         
         return self.results(train_losses, valid_losses, train_accuracies, valid_accuracies)
-    
+
+    def __adjust_lr(self, new_lr:float) -> None:
+        for param_group in self.optimizer.param_groups:
+            param_group["lr"] = new_lr
+
     def __accuracy(self, pred:torch.Tensor, batch_y:torch.Tensor):
         predicted_classes = torch.argmax(pred, dim=1)
         correct = (predicted_classes == batch_y).float().sum()
         accuracy = (correct/batch_y.shape[0]).item()
         return accuracy
-    
-    def __setup_tensorboard_basics(self, hyperparams, mode="train") -> SummaryWriter:
-        tb = SummaryWriter(comment=f" {mode} lr={hyperparams.lr} epochs={hyperparams.epoch_number} batch size={hyperparams.batch_size}")
-        images, labels = next(iter(self.train_loader))
-        grid = torchvision.utils.make_grid(images)
-        tb.add_image("images", grid)
-        tb.add_graph(self.model, images.cuda())
-        return tb
-
-    def __adjust_lr(self, new_lr:float) -> None:
-        for param_group in self.optimizer.param_groups:
-            param_group["lr"] = new_lr
     
     def __update_tensorboard_plots(self, tb, mean_result, epoch):
         tb.add_scalar("Train_loss", mean_result.train_loss_mean, epoch)
@@ -145,6 +141,13 @@ class RunManager():
         for param_name, param in self.model.named_parameters():
             tb.add_histogram(param_name, param, epoch)
             tb.add_histogram(f"{param_name} gradient", param.grad, epoch)
+    
+    def __save_model_if_best(self, mean_result):
+        print(type(mean_result))
+        if mean_result.valid_loss_mean < self.best_valid_loss:
+            self.best_model = dumps(self.model)
+            self.best_optimizer = dumps(self.optimizer)
+            self.best_valid_loss = mean_result.valid_loss_mean
 
     def test(self):
         pass
