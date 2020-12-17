@@ -34,7 +34,7 @@ class RunManager():
         self.__run = namedtuple("run", "valid_loss_mean model optimizer hyperparams epoch")
         self.best_run = self.__run(float("inf"), None, None, None, None)
     
-    def __reproducible(self, seed):
+    def __reproducible(self, seed:int):
         random.seed(seed)
         np.random.seed(seed)
         torch.manual_seed(seed)
@@ -44,7 +44,7 @@ class RunManager():
     def model_params(self, out_activations:int, in_channels:int=1, optimizer=optim.SGD):
         self.__create_model = partial(self.__create_model, out_activations=out_activations, in_channels=in_channels, optimizer=optimizer)
     
-    def __create_model(self, lr, out_activations:int, in_channels:int=1, optimizer=optim.SGD):
+    def __create_model(self, lr:float, out_activations:int, in_channels:int=1, optimizer=optim.SGD):
         self.model = model.ResNet50(out_activations, in_channels)
         self.optimizer = optimizer(self.model.parameters(), lr=lr, momentum=0.9)
 
@@ -86,7 +86,7 @@ class RunManager():
         elif mode=="test":
             self.test_loader = torch.utils.data.DataLoader(self.test_dataset, batch_size=batch_size, shuffle=shuffle)
 
-    def __setup_tensorboard_basics(self, hyperparams, mode="train") -> SummaryWriter:
+    def __setup_tensorboard_basics(self, hyperparams:namedtuple, mode="train") -> SummaryWriter:
         tb = SummaryWriter(comment=f" {mode} lr={hyperparams.lr} epochs={hyperparams.epoch_number} batch size={hyperparams.batch_size}")
         images, labels = next(iter(self.train_loader))
         grid = torchvision.utils.make_grid(images)
@@ -134,7 +134,7 @@ class RunManager():
         accuracy = (correct/batch_y.shape[0]).item()
         return accuracy
     
-    def __update_tensorboard_plots(self, tb, mean_result, epoch):
+    def __update_tensorboard_plots(self, tb:SummaryWriter, mean_result:namedtuple, epoch:int):
         tb.add_scalar("Train_loss", mean_result.train_loss_mean, epoch)
         tb.add_scalar("Valid_loss", mean_result.valid_loss_mean, epoch)
         tb.add_scalar("Train_accuracy", mean_result.train_accuracy_mean, epoch)
@@ -143,7 +143,7 @@ class RunManager():
             tb.add_histogram(param_name, param, epoch)
             tb.add_histogram(f"{param_name} gradient", param.grad, epoch)
     
-    def __save_model_if_best(self, mean_result, hyperparams, epoch):
+    def __save_model_if_best(self, mean_result:namedtuple, hyperparams:namedtuple, epoch:int):
         if mean_result.valid_loss_mean < self.best_run.valid_loss_mean:
             best_model = dumps(self.model)
             best_optimizer = dumps(self.optimizer)
