@@ -63,18 +63,19 @@ class RunManager():
         self.test_loader = torch.utils.data.DataLoader(self.test_dataset, batch_size=batch_size, shuffle=shuffle)
     
     def train(self):
-        parameters = [v for v in self.hyperparameters.values()]
-        for lr, epoch_number, batch_size, gamma in product(*parameters):
+        all_hyperparameters = [v for v in self.hyperparameters.values()]
+        hyperparam_combination = namedtuple("hyperparam_combination", "lr epoch_number batch_size gamma")
+        for hyperparams in product(*all_hyperparameters):
+                hyperparams = hyperparam_combination(*hyperparams)
                 self.__reproducible(seed=42)
-                self.__make_dataloaders(batch_size)
-                self.__create_model(lr=lr)
+                self.__make_dataloaders(hyperparams.batch_size)
+                self.__create_model(lr=hyperparams.lr)
                 self.model = self.model.to(self.device)
-                tb = SummaryWriter(comment=f" train lr={lr} epochs={epoch_number} batch size={batch_size}")
-                self.__setup_tensorboard_basics(tb)
-                print(f"Starting training, lr={lr}, batch size={batch_size}, gamma={gamma} for {epoch_number} epochs")
-                for epoch in range(epoch_number):
+                tb = self.__setup_tensorboard_basics(hyperparams)
+                print(f"Starting training, lr={hyperparams.lr}, batch size={hyperparams.batch_size}, gamma={hyperparams.gamma} for {hyperparams.epoch_number} epochs")
+                for epoch in range(hyperparams.epoch_number):
                     start = default_timer()
-                    result = self.__train_valid_one_epoch(lr)
+                    result = self.__train_valid_one_epoch(hyperparams.lr)
                     stop = default_timer()
                     train_loss_mean = mean(result.train_losses)
                     valid_loss_mean = mean(result.valid_losses)
@@ -87,15 +88,13 @@ class RunManager():
                     for param_name, param in self.model.named_parameters():
                         tb.add_histogram(param_name, param, epoch)
                         tb.add_histogram(f"{param_name} gradient", param.grad, epoch)
-                    print(f"{self.best_valid_loss} vs {valid_loss_mean}")
                     if valid_loss_mean < self.best_valid_loss:
-                        print("Weszlo")
                         self.best_model = dumps(self.model)
                         self.best_optimizer = dumps(self.optimizer)
                         self.best_valid_loss = valid_loss_mean
                     print(f"Finished {epoch+1} epoch in {stop-start}s; train loss: {train_loss_mean}, valid loss: {valid_loss_mean}; train accuracy: {train_accuracy_mean*100}%, valid_accuracy: {valid_accuracy_mean*100}%")
                 tb.close()
-                print(f"Finished training of lr={lr}, batch size={batch_size}, gamma={gamma} for {epoch_number} epochs\n" + "-" * 20 + "\n")
+                print(f"Finished training of lr={hyperparams.lr}, batch size={hyperparams.batch_size}, gamma={hyperparams.gamma} for {hyperparams.epoch_number} epochs\n" + "-" * 20 + "\n")
     
     def __train_valid_one_epoch(self, lr:float) -> Tuple[List[float], List[float]]:
         self.__adjust_lr(lr)
@@ -133,11 +132,13 @@ class RunManager():
         accuracy = (correct/batch_y.shape[0]).item()
         return accuracy
     
-    def __setup_tensorboard_basics(self, tb) -> None:
+    def __setup_tensorboard_basics(self, hyperparams, mode="train") -> SummaryWriter:
+        tb = SummaryWriter(comment=f" {mode} lr={hyperparams.lr} epochs={hyperparams.epoch_number} batch size={hyperparams.batch_size}")
         images, labels = next(iter(self.train_loader))
         grid = torchvision.utils.make_grid(images)
         tb.add_image("images", grid)
         tb.add_graph(self.model, images.cuda())
+        return tb
 
     def __adjust_lr(self, new_lr:float) -> None:
         for param_group in self.optimizer.param_groups:
@@ -159,9 +160,7 @@ class RunManager():
 input_data.download_mnist("/home/jedrzej/Desktop/fmnist")
 train_images, train_labels = input_data.load_mnist("/home/jedrzej/Desktop/fmnist")
 test_images, test_labels = input_data.load_mnist("/home/jedrzej/Desktop/fmnist")
-program = RunManager([0.001, 0.0001], [2])
+program = RunManager([0.001, 0.0001], [5])
 program.model_params(10)
 program.pass_datasets((train_images, train_labels), (test_images, test_labels))
 program.train()
-
-print(type(program.best_model))
