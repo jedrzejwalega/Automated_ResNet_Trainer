@@ -21,6 +21,9 @@ import fastai.data
 class RunManager():
     def __init__(self, learning_rates:List[float], epochs:List[int], batch_size:List[int]=[64], gamma:List[float]=[0.1], shuffle:List[bool]=[True], optimizer=optim.SGD, find_lr=False):
         self.__reproducible(seed=42)
+        if find_lr:
+            assert not learning_rates, "You cannot pass custom learning rates when using automatic best learning rate option"
+            
         self.hyperparameters = dict(learning_rates=learning_rates,
                                 epochs=epochs,
                                 batch_size=batch_size,
@@ -190,7 +193,7 @@ class RunManager():
 input_data.download_mnist("/home/jedrzej/Desktop/fmnist")
 train_images, train_labels = input_data.load_mnist("/home/jedrzej/Desktop/fmnist")
 test_images, test_labels = input_data.load_mnist("/home/jedrzej/Desktop/fmnist")
-program = RunManager([0.001], [3], shuffle=[True, False])
+program = RunManager([0.001], [3], shuffle=[True, False], find_lr=True)
 program.model_params(10)
 program.pass_datasets((train_images, train_labels), (test_images, test_labels))
 program.train()
