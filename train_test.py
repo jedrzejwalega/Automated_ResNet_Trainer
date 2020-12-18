@@ -197,6 +197,7 @@ class RunManager():
     def __find_best_lr(self, batch_size, shuffle=True):
         self.__reproducible(seed=42)
         self.__create_model()
+        self.model.train()
         dl_train = fastai.data.load.DataLoader(self.train_dataset, bs=batch_size, shuffle=shuffle)
         dl_valid = fastai.data.load.DataLoader(self.valid_dataset, bs=batch_size, shuffle=shuffle)
         dls = fastai.data.core.DataLoaders(dl_train, dl_valid, device=self.device)
