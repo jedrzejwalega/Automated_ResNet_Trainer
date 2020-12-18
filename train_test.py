@@ -23,7 +23,7 @@ class RunManager():
         self.__reproducible(seed=42)
         if find_lr:
             assert not learning_rates, "You cannot pass custom learning rates when using automatic best learning rate option"
-            
+            learning_rates = [None]
         self.hyperparameters = dict(learning_rates=learning_rates,
                                 epochs=epochs,
                                 batch_size=batch_size,
@@ -54,7 +54,7 @@ class RunManager():
     def __create_model(self, out_activations:int, in_channels:int=1):
         self.model = model.ResNet50(out_activations, in_channels)
     
-    def __create_optimizer(self, lr:float):
+    def __create_optimizer(self, lr:float, momentum:float=0.9):
         self.optimizer = self.optimizer_algorythm(self.model.parameters(), lr=lr, momentum=0.9)
 
     def pass_datasets(self, train_set:Tuple[torch.FloatTensor, torch.LongTensor], test_set:Tuple[torch.FloatTensor, torch.LongTensor]):
@@ -66,29 +66,42 @@ class RunManager():
         self.test_dataset = test_set
     
     def train(self):
+        if self.hyperparameters["learning_rates"] == [None]:
+            best_learning_rates = self.__best_lr_for_hyperparameters()
+
         all_hyperparameters = [v for v in self.hyperparameters.values()]
         hyperparam_combination = namedtuple("hyperparam_combination", "lr epoch_number batch_size gamma shuffle")
         averaged_epoch_results = namedtuple("averaged_epoch_results", "train_loss_mean valid_loss_mean train_accuracy_mean valid_accuracy_mean")
         for hyperparams in product(*all_hyperparameters):
-                hyperparams = hyperparam_combination(*hyperparams)
-                self.__reproducible(seed=42)
-                self.__make_dataloaders(hyperparams.batch_size, shuffle=hyperparams.shuffle)
-                self.__create_model()
-                self.__create_optimizer(lr=hyperparams.lr)
-                self.model = self.model.to(self.device)
-                tb = self.__setup_tensorboard_basics(hyperparams)
-                print(f"Starting training, lr={hyperparams.lr}, batch size={hyperparams.batch_size}, gamma={hyperparams.gamma}, shuffle={hyperparams.shuffle} for {hyperparams.epoch_number} epochs")
-                for epoch in range(hyperparams.epoch_number):
-                    start = default_timer()
-                    result = self.__train_valid_one_epoch(hyperparams.lr)
-                    stop = default_timer()
-                    mean_result = averaged_epoch_results(*map(mean, result))
-                    self.__update_tensorboard_plots(tb, mean_result, epoch)
-                    self.__save_model_if_best(mean_result, hyperparams, epoch+1)
-                    print(f"Finished epoch {epoch+1} in {stop-start}s; train loss: {mean_result.train_loss_mean}, valid loss: {mean_result.valid_loss_mean}; train accuracy: {mean_result.train_accuracy_mean*100}%, valid_accuracy: {mean_result.valid_accuracy_mean*100}%")
-                tb.close()
-                print(f"Finished training of lr={hyperparams.lr}, batch size={hyperparams.batch_size}, gamma={hyperparams.gamma}, shuffle={hyperparams.shuffle} for {hyperparams.epoch_number} epochs\n" + "-" * 20 + "\n")
+            hyperparams = hyperparam_combination(*hyperparams)
+            if not hyperparams.lr:
+                fitting_best_lr = best_learning_rates[(hyperparams.batch_size, hyperparams.shuffle)]
+                hyperparams = hyperparam_combination(fitting_best_lr, *hyperparams[1:])
+            self.__reproducible(seed=42)
+            self.__make_dataloaders(hyperparams.batch_size, shuffle=hyperparams.shuffle)
+            self.__create_model()
+            self.__create_optimizer(lr=hyperparams.lr)
+            self.model = self.model.to(self.device)
+            tb = self.__setup_tensorboard_basics(hyperparams)
+            print(f"Starting training, lr={hyperparams.lr}, batch size={hyperparams.batch_size}, gamma={hyperparams.gamma}, shuffle={hyperparams.shuffle} for {hyperparams.epoch_number} epochs")
+            for epoch in range(hyperparams.epoch_number):
+                start = default_timer()
+                result = self.__train_valid_one_epoch(hyperparams.lr)
+                stop = default_timer()
+                mean_result = averaged_epoch_results(*map(mean, result))
+                self.__update_tensorboard_plots(tb, mean_result, epoch)
+                self.__save_model_if_best(mean_result, hyperparams, epoch+1)
+                print(f"Finished epoch {epoch+1} in {stop-start}s; train loss: {mean_result.train_loss_mean}, valid loss: {mean_result.valid_loss_mean}; train accuracy: {mean_result.train_accuracy_mean*100}%, valid_accuracy: {mean_result.valid_accuracy_mean*100}%")
+            tb.close()
+            print(f"Finished training of lr={hyperparams.lr}, batch size={hyperparams.batch_size}, gamma={hyperparams.gamma}, shuffle={hyperparams.shuffle} for {hyperparams.epoch_number} epochs\n" + "-" * 20 + "\n")
     
+    def __best_lr_for_hyperparameters(self):
+        best_learning_rates = {}
+        for batch_size, shuffle in product(*[self.hyperparameters["batch_size"], self.hyperparameters["shuffle"]]):
+            best_lr = self.__find_best_lr(batch_size, shuffle)
+            best_learning_rates[(batch_size, shuffle)] = best_lr
+        return best_learning_rates
+
     def __make_dataloaders(self, batch_size:int=64, num_workers:int=1, shuffle:bool=True, mode="train"):
         if mode=="train":
             self.train_loader = torch.utils.data.DataLoader(self.train_dataset, batch_size=batch_size, shuffle=shuffle)
@@ -181,19 +194,20 @@ class RunManager():
         test_accuracy_mean = mean(test_accuracies)
         print(f"Finished testing, testing loss: {test_loss_mean}, test accuracy: {test_accuracy_mean}\n" + "-" * 20)
 
-    def __find_best_lr(self, shuffle=True):
-        self.__make_dataloaders()
+    def __find_best_lr(self, batch_size, shuffle=True):
+        self.__reproducible(seed=42)
         self.__create_model()
-        dl_train = fastai.data.load.DataLoader(self.train_dataset, bs=self.hyperparameters["batch_size"][0], shuffle=shuffle)
-        dl_valid = fastai.data.load.DataLoader(self.valid_dataset, bs=self.hyperparameters["batch_size"][0], shuffle=shuffle)
+        dl_train = fastai.data.load.DataLoader(self.train_dataset, bs=batch_size, shuffle=shuffle)
+        dl_valid = fastai.data.load.DataLoader(self.valid_dataset, bs=batch_size, shuffle=shuffle)
         dls = fastai.data.core.DataLoaders(dl_train, dl_valid, device=self.device)
         learn = fastai.learner.Learner(dls, model=self.model, loss_func=self.loss_func)
-        learn.lr_find()
+        suggested_lr = learn.lr_find().lr_min
+        return suggested_lr
 
 input_data.download_mnist("/home/jedrzej/Desktop/fmnist")
 train_images, train_labels = input_data.load_mnist("/home/jedrzej/Desktop/fmnist")
 test_images, test_labels = input_data.load_mnist("/home/jedrzej/Desktop/fmnist")
-program = RunManager([0.001], [3], shuffle=[True, False], find_lr=True)
+program = RunManager([], [2], shuffle=[True, False], find_lr=True, batch_size=[32,64])
 program.model_params(10)
 program.pass_datasets((train_images, train_labels), (test_images, test_labels))
 program.train()
