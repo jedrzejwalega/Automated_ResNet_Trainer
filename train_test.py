@@ -37,7 +37,7 @@ class RunManager():
         use_cuda = torch.cuda.is_available()
         self.device = torch.device("cuda" if use_cuda else "cpu")
         self.loss_func = nn.CrossEntropyLoss().to(self.device)
-        self.__results = namedtuple("results", "train_losses valid_losses train_accuracies valid_accuracies")
+        self.__results = namedtuple("results", "train_losses valid_losses train_accuracies valid_accuracies train_batch_times valid_batch_times")
         self.__run = namedtuple("run", "valid_loss_mean model optimizer hyperparams epoch")
         self.best_run = self.__run(float("inf"), None, None, None, None)
     
@@ -71,7 +71,7 @@ class RunManager():
 
         all_hyperparameters = [v for v in self.hyperparameters.values()]
         hyperparam_combination = namedtuple("hyperparam_combination", "lr epoch_number batch_size gamma shuffle")
-        averaged_epoch_results = namedtuple("averaged_epoch_results", "train_loss_mean valid_loss_mean train_accuracy_mean valid_accuracy_mean")
+        averaged_epoch_results = namedtuple("averaged_epoch_results", "train_loss_mean valid_loss_mean train_accuracy_mean valid_accuracy_mean train_batch_time_mean valid_batch_time_mean")
         for hyperparams in product(*all_hyperparameters):
             hyperparams = hyperparam_combination(*hyperparams)
             if not hyperparams.lr:
@@ -124,7 +124,10 @@ class RunManager():
         valid_losses = []
         train_accuracies = []
         valid_accuracies = []
+        train_batch_times = []
+        valid_batch_times = []
         for batch_x, batch_y in self.train_loader:
+            train_batch_start = default_timer()
             batch_x, batch_y = batch_x.to(self.device), batch_y.to(self.device)
             pred = self.model(batch_x)
             accuracy = self.__accuracy(pred, batch_y)
@@ -134,18 +137,23 @@ class RunManager():
             self.optimizer.zero_grad()
             loss.backward()
             self.optimizer.step()
-
+            train_batch_stop = default_timer()
+            train_batch_times.append(train_batch_stop - train_batch_start)
+            
         self.model.eval()    
         with torch.no_grad():
             for batch_x, batch_y in self.valid_loader:
+                valid_batch_start = default_timer()
                 batch_x, batch_y = batch_x.to(self.device), batch_y.to(self.device)
                 pred = self.model(batch_x)
                 valid_accuracy = self.__accuracy(pred, batch_y)
                 valid_accuracies.append(valid_accuracy)
                 loss = self.loss_func(pred, batch_y)
                 valid_losses.append(loss.item())
+                valid_batch_stop = default_timer()
+                valid_batch_times.append(valid_batch_stop - valid_batch_start)
         
-        return self.__results(train_losses, valid_losses, train_accuracies, valid_accuracies)
+        return self.__results(train_losses, valid_losses, train_accuracies, valid_accuracies, train_batch_times, valid_batch_times)
 
     def __adjust_lr(self, new_lr:float) -> None:
         for param_group in self.optimizer.param_groups:
@@ -162,6 +170,8 @@ class RunManager():
         tb.add_scalar("Valid_loss", mean_result.valid_loss_mean, epoch)
         tb.add_scalar("Train_accuracy", mean_result.train_accuracy_mean, epoch)
         tb.add_scalar("Valid_accuracy", mean_result.valid_accuracy_mean, epoch)
+        tb.add_scalar("Train_batch_time", mean_result.train_batch_time_mean, epoch)
+        tb.add_scalar("Valid_batch_time", mean_result.valid_batch_time_mean, epoch)
         for param_name, param in self.model.named_parameters():
             tb.add_histogram(param_name, param, epoch)
             tb.add_histogram(f"{param_name} gradient", param.grad, epoch)
