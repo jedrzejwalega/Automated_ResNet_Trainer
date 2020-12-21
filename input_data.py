@@ -8,7 +8,7 @@ import argparse
 
 
 # Parse input arguments
-def get_input() -> argparse.Namespace:
+def get_user_input() -> argparse.Namespace:
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--path", "-p", 

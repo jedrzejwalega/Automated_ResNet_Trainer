@@ -49,19 +49,27 @@ class RunManager():
         torch.backends.cudnn.deterministic = True
         torch.backends.cudnn.benchmark = False
     
-    def model_params(self, out_activations:int, in_channels:int=1):
+    def __model_params(self, out_activations:int, in_channels:int=1):
         self.__create_model = partial(self.__create_model, out_activations=out_activations, in_channels=in_channels)
     
     def __create_model(self, out_activations:int, in_channels:int=1):
         self.model = model.ResNet50(out_activations, in_channels)
 
     def pass_datasets(self, train_set:Tuple[torch.FloatTensor, torch.LongTensor], test_set:Tuple[torch.FloatTensor, torch.LongTensor]):
+        assert len(train_set[0].shape) > 3 and len(test_set[0].shape) > 3, "You have to provide data in the form of an at least rank 4 tensor, with last 3 dimensions being: channels, height, width"
+        channels, out_activations = self.__get_model_params(train_set)
+        self.__model_params(out_activations=out_activations, in_channels=channels)
         train_set = dataset.ImageDataset(train_set)
         test_set = dataset.ImageDataset(test_set)
         train_len = len(train_set)
         lengths = [int(train_len*0.8), int(train_len*0.2)]
         self.train_dataset, self.valid_dataset = torch.utils.data.random_split(train_set, lengths=lengths, generator=torch.Generator().manual_seed(42))
         self.test_dataset = test_set
+    
+    def __get_model_params(self, train_set):
+        in_channels = train_set[0].shape[-3]
+        out_activations = len(torch.unique(train_set[1]))
+        return in_channels, out_activations
     
     def train(self):
         if self.hyperparameters["learning_rates"] == [None]:
@@ -227,4 +235,3 @@ class RunManager():
         print(f"Writing best model from epoch number {self.best_run.epoch}, lr={self.best_run.hyperparams.lr}, batch_size={self.best_run.hyperparams.batch_size}, gamma={self.best_run.hyperparams.gamma}, gamma_step={self.best_run.hyperparams.gamma_step}...")
         torch.save(self.best_run.model, path)
         print("Done.")
-        
