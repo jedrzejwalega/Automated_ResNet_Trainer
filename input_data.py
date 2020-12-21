@@ -19,7 +19,8 @@ def get_input() -> argparse.Namespace:
                         nargs="+",
                         type=float,
                         help="An arbitrary number of learning rates to use in model training",
-                        required=True)
+                        required=False,
+                        default=[])
     parser.add_argument("--gamma", "-g", 
                         nargs="+",
                         type=float,
@@ -40,7 +41,7 @@ def get_input() -> argparse.Namespace:
     parser.add_argument("--shuffle", "-s", 
                         nargs="+",
                         type=bool,
-                        help="Add one of three options: True, False or True False. Specifies whether the dataset will be shuffled during training. Defaults to True",
+                        help="Add one of three options: True, False or True False. Specifies whether the dataset will be shuffled during training. Defaults to True.",
                         required=False,
                         default=[True])
     parser.add_argument("--find_lr", "-f",
@@ -53,7 +54,16 @@ def get_input() -> argparse.Namespace:
                         help="Bool whether to automaticaly test best model from the training sessions on downloaded test set. Defaults to False.",
                         required=False,
                         default=False)
+    parser.add_argument("--gamma_step", "-gs", 
+                        nargs="+",
+                        type=int,
+                        help="An arbitrary number of gamma steps (how many epochs till gamma is applied to change the learning rate). Defaults to 3.",
+                        required=False,
+                        default=[3])
     args = parser.parse_args()
+    if args.find_lr:
+        assert not args.learning_rates, "You cannot pass custom learning rates when using automatic best learning rate option"
+
     return args
 
 # Download mnist data from url to dir_name

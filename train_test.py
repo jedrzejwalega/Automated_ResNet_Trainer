@@ -19,16 +19,16 @@ import fastai.learner
 import fastai.data
 
 class RunManager():
-    def __init__(self, learning_rates:List[float], epochs:List[int], batch_size:List[int]=[64], gamma:List[float]=[0.1], shuffle:List[bool]=[True], optimizer=optim.SGD, find_lr=False):
+    def __init__(self, learning_rates:List[float], epochs:List[int], batch_size:List[int]=[64], gamma:List[float]=[0.1], shuffle:List[bool]=[True], optimizer=optim.SGD, find_lr=False, gamma_step=[1]):
         self.__reproducible(seed=42)
         if find_lr:
-            assert not learning_rates, "You cannot pass custom learning rates when using automatic best learning rate option"
             learning_rates = [None]
         self.hyperparameters = dict(learning_rates=learning_rates,
                                 epochs=epochs,
                                 batch_size=batch_size,
                                 gamma=gamma,
-                                shuffle=shuffle)
+                                shuffle=shuffle,
+                                gamma_step=gamma_step)
         self.model = None
         self.optimizer_algorythm = optimizer
         self.optimizer = None
@@ -70,7 +70,7 @@ class RunManager():
             best_learning_rates = self.__best_lr_for_hyperparameters()
 
         all_hyperparameters = [v for v in self.hyperparameters.values()]
-        hyperparam_combination = namedtuple("hyperparam_combination", "lr epoch_number batch_size gamma shuffle")
+        hyperparam_combination = namedtuple("hyperparam_combination", "lr epoch_number batch_size gamma shuffle gamma_step")
         averaged_epoch_results = namedtuple("averaged_epoch_results", "train_loss_mean valid_loss_mean train_accuracy_mean valid_accuracy_mean train_batch_time_mean valid_batch_time_mean")
         for hyperparams in product(*all_hyperparameters):
             hyperparams = hyperparam_combination(*hyperparams)
@@ -83,7 +83,7 @@ class RunManager():
             self.__create_optimizer(lr=hyperparams.lr)
             self.model = self.model.to(self.device)
             tb = self.__setup_tensorboard_basics(hyperparams)
-            print(f"Starting training, lr={hyperparams.lr}, batch size={hyperparams.batch_size}, gamma={hyperparams.gamma}, shuffle={hyperparams.shuffle} for {hyperparams.epoch_number} epochs")
+            print(f"Starting training, lr={hyperparams.lr}, batch size={hyperparams.batch_size}, gamma={hyperparams.gamma}, shuffle={hyperparams.shuffle}, gamma_step={hyperparams.gamma_step} for {hyperparams.epoch_number} epochs")
             for epoch in range(hyperparams.epoch_number):
                 start = default_timer()
                 result = self.__train_valid_one_epoch(hyperparams.lr)
@@ -93,7 +93,7 @@ class RunManager():
                 self.__save_model_if_best(mean_result, hyperparams, epoch+1)
                 print(f"Finished epoch {epoch+1} in {stop-start}s; train loss: {mean_result.train_loss_mean}, valid loss: {mean_result.valid_loss_mean}; train accuracy: {mean_result.train_accuracy_mean*100}%, valid_accuracy: {mean_result.valid_accuracy_mean*100}%")
             tb.close()
-            print(f"Finished training of lr={hyperparams.lr}, batch size={hyperparams.batch_size}, gamma={hyperparams.gamma}, shuffle={hyperparams.shuffle} for {hyperparams.epoch_number} epochs\n" + "-" * 20 + "\n")
+            print(f"Finished training of lr={hyperparams.lr}, batch size={hyperparams.batch_size}, gamma={hyperparams.gamma}, shuffle={hyperparams.shuffle}, gamma_step={hyperparams.gamma_step} for {hyperparams.epoch_number} epochs\n" + "-" * 20 + "\n")
     
     def __best_lr_for_hyperparameters(self):
         best_learning_rates = {}
@@ -110,7 +110,7 @@ class RunManager():
             self.test_loader = torch.utils.data.DataLoader(self.test_dataset, batch_size=batch_size, shuffle=shuffle)
 
     def __setup_tensorboard_basics(self, hyperparams:namedtuple, mode="train") -> SummaryWriter:
-        tb = SummaryWriter(comment=f" {mode} lr={hyperparams.lr} epochs={hyperparams.epoch_number} batch size={hyperparams.batch_size} gamma={hyperparams.gamma} shuffle={hyperparams.shuffle}")
+        tb = SummaryWriter(comment=f" {mode} lr={hyperparams.lr} epochs={hyperparams.epoch_number} batch size={hyperparams.batch_size} gamma={hyperparams.gamma} gamma_step={hyperparams.gamma_step} shuffle={hyperparams.shuffle}")
         images, labels = next(iter(self.train_loader))
         grid = torchvision.utils.make_grid(images)
         tb.add_image("images", grid)
@@ -165,7 +165,7 @@ class RunManager():
         accuracy = (correct/batch_y.shape[0]).item()
         return accuracy
     
-    def __update_tensorboard_plots(self, tb:SummaryWriter, mean_result:namedtuple, epoch:int):
+    def __update_tensorboard_plots(self, tb:SummaryWriter, mean_result:namedtuple, epoch:int) -> None:
         tb.add_scalar("Train_loss", mean_result.train_loss_mean, epoch)
         tb.add_scalar("Valid_loss", mean_result.valid_loss_mean, epoch)
         tb.add_scalar("Train_accuracy", mean_result.train_accuracy_mean, epoch)
@@ -176,20 +176,20 @@ class RunManager():
             tb.add_histogram(param_name, param, epoch)
             tb.add_histogram(f"{param_name} gradient", param.grad, epoch)
     
-    def __save_model_if_best(self, mean_result:namedtuple, hyperparams:namedtuple, epoch:int):
+    def __save_model_if_best(self, mean_result:namedtuple, hyperparams:namedtuple, epoch:int) -> None:
         if mean_result.valid_loss_mean < self.best_run.valid_loss_mean:
             best_model = dumps(self.model)
             best_optimizer = dumps(self.optimizer)
             best_valid_loss_mean = mean_result.valid_loss_mean
             self.best_run = self.__run(best_valid_loss_mean, best_model, best_optimizer, hyperparams, epoch)
 
-    def test(self):
+    def test(self) -> None:
         self.model = loads(self.best_run.model)
         self.__make_dataloaders(batch_size=self.best_run.hyperparams.batch_size,
                                 shuffle=False,
                                 mode="test")
         self.model.eval()
-        print(f"Starting testing, model from epoch number {self.best_run.epoch}, lr={self.best_run.hyperparams.lr}, batch_size={self.best_run.hyperparams.batch_size}, gamma={self.best_run.hyperparams.gamma}")
+        print(f"Starting testing, model from epoch number {self.best_run.epoch}, lr={self.best_run.hyperparams.lr}, batch_size={self.best_run.hyperparams.batch_size}, gamma={self.best_run.hyperparams.gamma}, gamma_step={self.best_run.hyperparams.gamma_step}")
         test_losses = []
         test_accuracies = []
         with torch.no_grad():
@@ -204,7 +204,7 @@ class RunManager():
         test_accuracy_mean = mean(test_accuracies)
         print(f"Finished testing, testing loss: {test_loss_mean}, test accuracy: {test_accuracy_mean}\n" + "-" * 20)
 
-    def __find_best_lr(self, batch_size, shuffle=True):
+    def __find_best_lr(self, batch_size, shuffle=True) -> float:
         self.__reproducible(seed=42)
         self.__create_model()
         self.model.train()
@@ -214,12 +214,3 @@ class RunManager():
         learn = fastai.learner.Learner(dls, model=self.model, loss_func=self.loss_func)
         suggested_lr = learn.lr_find().lr_min
         return suggested_lr
-
-# input_data.download_mnist("/home/jedrzej/Desktop/fmnist")
-# train_images, train_labels = input_data.load_mnist("/home/jedrzej/Desktop/fmnist")
-# test_images, test_labels = input_data.load_mnist("/home/jedrzej/Desktop/fmnist")
-# program = RunManager([], [2], shuffle=[True, False], find_lr=True, batch_size=[32,64])
-# program.model_params(10)
-# program.pass_datasets((train_images, train_labels), (test_images, test_labels))
-# program.train()
-# program.test()

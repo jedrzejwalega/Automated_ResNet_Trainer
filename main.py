@@ -13,11 +13,13 @@ def main():
                                     shuffle=args.shuffle, 
                                     find_lr=args.find_lr, 
                                     batch_size=args.batch_size,
-                                    gamma=args.gamma)
+                                    gamma=args.gamma,
+                                    gamma_step=args.gamma_step)
     program.model_params(10)
     program.pass_datasets((train_images, train_labels), (test_images, test_labels))
     program.train()
     if args.test:
         program.test()
 
-main()
+if __name__ == "__main__":
+    main()
