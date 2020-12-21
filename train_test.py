@@ -2,7 +2,6 @@ import torch
 import torch.nn as nn
 import model
 import torch.optim as optim
-import input_data
 import dataset
 from typing import List,Tuple
 from statistics import mean
@@ -17,6 +16,8 @@ from collections import namedtuple
 from pickle import dumps, loads
 import fastai.learner
 import fastai.data
+
+
 
 class RunManager():
     def __init__(self, learning_rates:List[float], epochs:List[int], batch_size:List[int]=[64], gamma:List[float]=[0.1], shuffle:List[bool]=[True], optimizer=optim.SGD, find_lr=False, gamma_step=[1]):
@@ -92,11 +93,11 @@ class RunManager():
                 result = self.__train_valid_one_epoch(hyperparams.lr)
                 stop = default_timer()
                 mean_result = averaged_epoch_results(*map(mean, result))
-                self.__update_tensorboard_plots(tb, mean_result, epoch)
+                self.__update_tensorboard_plots(tb, mean_result, epoch, hyperparams.lr)
                 self.__save_model_if_best(mean_result, hyperparams, epoch+1)
                 print(f"Finished epoch {epoch+1} in {stop-start}s; train loss: {mean_result.train_loss_mean}, valid loss: {mean_result.valid_loss_mean}; train accuracy: {mean_result.train_accuracy_mean*100}%, valid_accuracy: {mean_result.valid_accuracy_mean*100}%")
             tb.close()
-            print("Finished training" + "-" * 20 + "\n")
+            print("Finished training\n" + "-" * 20 + "\n")
     
     def __best_lr_for_hyperparameters(self):
         best_learning_rates = {}
@@ -169,13 +170,14 @@ class RunManager():
         accuracy = (correct/batch_y.shape[0]).item()
         return accuracy
     
-    def __update_tensorboard_plots(self, tb:SummaryWriter, mean_result:namedtuple, epoch:int) -> None:
+    def __update_tensorboard_plots(self, tb:SummaryWriter, mean_result:namedtuple, epoch:int, learning_rate:float) -> None:
         tb.add_scalar("Train_loss", mean_result.train_loss_mean, epoch)
         tb.add_scalar("Valid_loss", mean_result.valid_loss_mean, epoch)
         tb.add_scalar("Train_accuracy", mean_result.train_accuracy_mean, epoch)
         tb.add_scalar("Valid_accuracy", mean_result.valid_accuracy_mean, epoch)
         tb.add_scalar("Train_batch_time", mean_result.train_batch_time_mean, epoch)
         tb.add_scalar("Valid_batch_time", mean_result.valid_batch_time_mean, epoch)
+        tb.add_scalar("Train_learning_rate", learning_rate, epoch)
         for param_name, param in self.model.named_parameters():
             tb.add_histogram(param_name, param, epoch)
             tb.add_histogram(f"{param_name} gradient", param.grad, epoch)
