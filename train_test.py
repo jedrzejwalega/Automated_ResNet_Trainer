@@ -96,7 +96,7 @@ class RunManager():
                 self.__save_model_if_best(mean_result, hyperparams, epoch+1)
                 print(f"Finished epoch {epoch+1} in {stop-start}s; train loss: {mean_result.train_loss_mean}, valid loss: {mean_result.valid_loss_mean}; train accuracy: {mean_result.train_accuracy_mean*100}%, valid_accuracy: {mean_result.valid_accuracy_mean*100}%")
             tb.close()
-            print(f"Finished training of lr={hyperparams.lr}, batch size={hyperparams.batch_size}, gamma={hyperparams.gamma}, shuffle={hyperparams.shuffle}, gamma_step={hyperparams.gamma_step} for {hyperparams.epoch_number} epochs\n" + "-" * 20 + "\n")
+            print("Finished training" + "-" * 20 + "\n")
     
     def __best_lr_for_hyperparameters(self):
         best_learning_rates = {}
