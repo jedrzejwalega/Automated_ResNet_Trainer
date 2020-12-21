@@ -220,3 +220,9 @@ class RunManager():
         test_loss_mean = mean(test_losses)
         test_accuracy_mean = mean(test_accuracies)
         print(f"Finished testing, testing loss: {test_loss_mean}, test accuracy: {test_accuracy_mean}\n" + "-" * 20)
+
+    def write_best_model(self, path):
+        print(f"Writing best model from epoch number {self.best_run.epoch}, lr={self.best_run.hyperparams.lr}, batch_size={self.best_run.hyperparams.batch_size}, gamma={self.best_run.hyperparams.gamma}, gamma_step={self.best_run.hyperparams.gamma_step}...")
+        torch.save(self.best_run.model, path)
+        print("Done.")
+        
