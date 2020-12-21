@@ -54,9 +54,6 @@ class RunManager():
     
     def __create_model(self, out_activations:int, in_channels:int=1):
         self.model = model.ResNet50(out_activations, in_channels)
-    
-    def __create_optimizer(self, lr:float, momentum:float=0.9):
-        self.optimizer = self.optimizer_algorythm(self.model.parameters(), lr=lr, momentum=0.9)
 
     def pass_datasets(self, train_set:Tuple[torch.FloatTensor, torch.LongTensor], test_set:Tuple[torch.FloatTensor, torch.LongTensor]):
         train_set = dataset.ImageDataset(train_set)
@@ -106,18 +103,32 @@ class RunManager():
             best_learning_rates[(batch_size, shuffle)] = best_lr
         return best_learning_rates
 
+    def __find_best_lr(self, batch_size, shuffle=True) -> float:
+        self.__reproducible(seed=42)
+        self.__create_model()
+        self.model.train()
+        dl_train = fastai.data.load.DataLoader(self.train_dataset, bs=batch_size, shuffle=shuffle)
+        dl_valid = fastai.data.load.DataLoader(self.valid_dataset, bs=batch_size, shuffle=shuffle)
+        dls = fastai.data.core.DataLoaders(dl_train, dl_valid, device=self.device)
+        learn = fastai.learner.Learner(dls, model=self.model, loss_func=self.loss_func)
+        suggested_lr = learn.lr_find().lr_min
+        return suggested_lr
+
     def __make_dataloaders(self, batch_size:int=64, num_workers:int=1, shuffle:bool=True, mode="train"):
         if mode=="train":
             self.train_loader = torch.utils.data.DataLoader(self.train_dataset, batch_size=batch_size, shuffle=shuffle)
             self.valid_loader = torch.utils.data.DataLoader(self.valid_dataset, batch_size=batch_size, shuffle=shuffle)
         elif mode=="test":
             self.test_loader = torch.utils.data.DataLoader(self.test_dataset, batch_size=batch_size, shuffle=shuffle)
+    
+    def __create_optimizer(self, lr:float, momentum:float=0.9):
+        self.optimizer = self.optimizer_algorythm(self.model.parameters(), lr=lr, momentum=0.9)
 
     def __setup_tensorboard_basics(self, hyperparams:namedtuple, mode="train") -> SummaryWriter:
         tb = SummaryWriter(comment=f" {mode} lr={hyperparams.lr} epochs={hyperparams.epoch_number} batch size={hyperparams.batch_size} gamma={hyperparams.gamma} gamma_step={hyperparams.gamma_step} shuffle={hyperparams.shuffle}")
         images, labels = next(iter(self.train_loader))
         grid = torchvision.utils.make_grid(images)
-        tb.add_image("images", grid)
+        tb.add_image("First_batch", grid)
         tb.add_graph(self.model, images.cuda())
         return tb    
     
@@ -209,14 +220,3 @@ class RunManager():
         test_loss_mean = mean(test_losses)
         test_accuracy_mean = mean(test_accuracies)
         print(f"Finished testing, testing loss: {test_loss_mean}, test accuracy: {test_accuracy_mean}\n" + "-" * 20)
-
-    def __find_best_lr(self, batch_size, shuffle=True) -> float:
-        self.__reproducible(seed=42)
-        self.__create_model()
-        self.model.train()
-        dl_train = fastai.data.load.DataLoader(self.train_dataset, bs=batch_size, shuffle=shuffle)
-        dl_valid = fastai.data.load.DataLoader(self.valid_dataset, bs=batch_size, shuffle=shuffle)
-        dls = fastai.data.core.DataLoaders(dl_train, dl_valid, device=self.device)
-        learn = fastai.learner.Learner(dls, model=self.model, loss_func=self.loss_func)
-        suggested_lr = learn.lr_find().lr_min
-        return suggested_lr
