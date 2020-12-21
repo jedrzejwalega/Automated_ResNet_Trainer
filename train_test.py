@@ -85,6 +85,9 @@ class RunManager():
             tb = self.__setup_tensorboard_basics(hyperparams)
             print(f"Starting training, lr={hyperparams.lr}, batch size={hyperparams.batch_size}, gamma={hyperparams.gamma}, shuffle={hyperparams.shuffle}, gamma_step={hyperparams.gamma_step} for {hyperparams.epoch_number} epochs")
             for epoch in range(hyperparams.epoch_number):
+                if epoch % hyperparams.gamma_step == 0 and epoch > 0:
+                    new_lr = hyperparams.lr * hyperparams.gamma
+                    hyperparams = hyperparam_combination(new_lr, *hyperparams[1:])
                 start = default_timer()
                 result = self.__train_valid_one_epoch(hyperparams.lr)
                 stop = default_timer()
@@ -158,6 +161,7 @@ class RunManager():
     def __adjust_lr(self, new_lr:float) -> None:
         for param_group in self.optimizer.param_groups:
             param_group["lr"] = new_lr
+            lr = param_group["lr"]
 
     def __accuracy(self, pred:torch.Tensor, batch_y:torch.Tensor):
         predicted_classes = torch.argmax(pred, dim=1)
