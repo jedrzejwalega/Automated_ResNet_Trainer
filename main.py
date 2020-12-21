@@ -20,6 +20,8 @@ def main():
     program.train()
     if args.test:
         program.test()
+    if args.write_model:
+        program.write_best_model(args.write_model)
 
 if __name__ == "__main__":
     main()

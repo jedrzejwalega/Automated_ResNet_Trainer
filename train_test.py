@@ -182,13 +182,15 @@ class RunManager():
         return accuracy
     
     def __update_tensorboard_plots(self, tb:SummaryWriter, mean_result:namedtuple, epoch:int, learning_rate:float) -> None:
-        tb.add_scalar("Train_loss", mean_result.train_loss_mean, epoch)
-        tb.add_scalar("Valid_loss", mean_result.valid_loss_mean, epoch)
-        tb.add_scalar("Train_accuracy", mean_result.train_accuracy_mean, epoch)
-        tb.add_scalar("Valid_accuracy", mean_result.valid_accuracy_mean, epoch)
-        tb.add_scalar("Train_batch_time", mean_result.train_batch_time_mean, epoch)
-        tb.add_scalar("Valid_batch_time", mean_result.valid_batch_time_mean, epoch)
-        tb.add_scalar("Train_learning_rate", learning_rate, epoch)
+        for plot_title, value in [("Train_loss", mean_result.train_loss_mean),
+                                  ("Valid_loss", mean_result.valid_loss_mean),
+                                  ("Train_accuracy", mean_result.train_accuracy_mean),
+                                  ("Valid_accuracy", mean_result.valid_accuracy_mean),
+                                  ("Train_batch_time", mean_result.train_batch_time_mean),
+                                  ("Valid_batch_time", mean_result.valid_batch_time_mean),
+                                  ("Train_learning_rate", learning_rate)]:
+            tb.add_scalar(plot_title, value, epoch)
+        
         for param_name, param in self.model.named_parameters():
             tb.add_histogram(param_name, param, epoch)
             tb.add_histogram(f"{param_name} gradient", param.grad, epoch)

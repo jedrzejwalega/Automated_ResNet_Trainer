@@ -60,6 +60,10 @@ def get_input() -> argparse.Namespace:
                         help="An arbitrary number of gamma steps (how many epochs till gamma is applied to change the learning rate). Defaults to 3.",
                         required=False,
                         default=[3])
+    parser.add_argument("--write_model", "-w",
+                        type=str,
+                        help="Save best model from the training sessions (based od validation accuracy) into a given path.",
+                        required=False)
     args = parser.parse_args()
     if args.find_lr:
         assert not args.learning_rates, "You cannot pass custom learning rates when using automatic best learning rate option"
