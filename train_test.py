@@ -215,11 +215,11 @@ class RunManager():
         suggested_lr = learn.lr_find().lr_min
         return suggested_lr
 
-input_data.download_mnist("/home/jedrzej/Desktop/fmnist")
-train_images, train_labels = input_data.load_mnist("/home/jedrzej/Desktop/fmnist")
-test_images, test_labels = input_data.load_mnist("/home/jedrzej/Desktop/fmnist")
-program = RunManager([], [2], shuffle=[True, False], find_lr=True, batch_size=[32,64])
-program.model_params(10)
-program.pass_datasets((train_images, train_labels), (test_images, test_labels))
-program.train()
-program.test()
+# input_data.download_mnist("/home/jedrzej/Desktop/fmnist")
+# train_images, train_labels = input_data.load_mnist("/home/jedrzej/Desktop/fmnist")
+# test_images, test_labels = input_data.load_mnist("/home/jedrzej/Desktop/fmnist")
+# program = RunManager([], [2], shuffle=[True, False], find_lr=True, batch_size=[32,64])
+# program.model_params(10)
+# program.pass_datasets((train_images, train_labels), (test_images, test_labels))
+# program.train()
+# program.test()

@@ -11,8 +11,9 @@ import argparse
 def get_input() -> argparse.Namespace:
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("--path", "-p", type=str,
-                        help="Path to download data to", 
+    parser.add_argument("--path", "-p", 
+                        type=str,
+                        help="Path to download data to. Only downloads if the data is missing, otherwise uses existing one.", 
                         required=True)
     parser.add_argument("--learning_rates", "-lr", 
                         nargs="+",
@@ -23,12 +24,14 @@ def get_input() -> argparse.Namespace:
                         nargs="+",
                         type=float,
                         help="An arbitrary number of gammas (learning rate decay) to use in model training. Defaults to 0.1. Add 1 for no gamma at all.",
-                        required=False)
+                        required=False,
+                        default=[0.1])
     parser.add_argument("--batch_size", "-bs", 
                         nargs="+",
                         type=int,
                         help="An arbitrary number of batch sizes to use in model training. Defaults to 64.",
-                        required=False)
+                        required=False,
+                        default=[64])
     parser.add_argument("--epochs", "-e", 
                         nargs="+",
                         type=int,
@@ -38,14 +41,19 @@ def get_input() -> argparse.Namespace:
                         nargs="+",
                         type=bool,
                         help="Add one of three options: True, False or True False. Specifies whether the dataset will be shuffled during training. Defaults to True",
-                        required=False)
+                        required=False,
+                        default=[True])
     parser.add_argument("--find_lr", "-f",
                         type=bool,
                         help="True/False - whether to use fastai's learning rate finder to find optimal learning rate. If True, you shouldn't pass your own learning rates.",
-                        required=False
-                        )
+                        required=False,
+                        default=False)
+    parser.add_argument("--test", "-t",
+                        type=bool,
+                        help="Bool whether to automaticaly test best model from the training sessions on downloaded test set. Defaults to False.",
+                        required=False,
+                        default=False)
     args = parser.parse_args()
-    print(args.learning_rates)
     return args
 
 # Download mnist data from url to dir_name
@@ -76,13 +84,14 @@ def load_mnist(path:str, kind:str="train") -> (torch.Tensor, torch.Tensor):
                                % kind)
 
     with gzip.open(labels_path, "rb") as lbpath:
-        labels = np.frombuffer(lbpath.read(), dtype=np.uint8,
-                               offset=8)
+        labels = np.array(np.frombuffer(lbpath.read(), dtype=np.uint8,
+                               offset=8))
 
     with gzip.open(images_path, "rb") as imgpath:
-        images = np.frombuffer(imgpath.read(), dtype=np.uint8,
-                               offset=16).reshape(len(labels), 1, 28, 28)
+        images = np.array(np.frombuffer(imgpath.read(), dtype=np.uint8,
+                               offset=16).reshape(len(labels), 1, 28, 28))
+    images.setflags(write=1)
+    labels.setflags(write=1)
+
 
     return (torch.from_numpy(images).float(), torch.from_numpy(labels).long())
-
-get_input()
