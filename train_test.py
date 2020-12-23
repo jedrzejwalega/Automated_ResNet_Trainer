@@ -16,7 +16,7 @@ from collections import namedtuple
 from pickle import dumps, loads
 import fastai.learner
 import fastai.data
-
+import resnet
 
 
 class RunManager():
@@ -33,8 +33,12 @@ class RunManager():
         self.model = None
         self.optimizer_algorythm = optimizer
         self.optimizer = None
-        self.train_data = None
-        self.test_data = None
+        self.train_dataset = None
+        self.valid_dataset = None
+        self.test_dataset = None
+        self.__train_loader = None
+        self.__valid_loader = None
+        self.__test_loader = None
         use_cuda = torch.cuda.is_available()
         self.device = torch.device("cuda" if use_cuda else "cpu")
         self.loss_func = nn.CrossEntropyLoss().to(self.device)
@@ -124,17 +128,17 @@ class RunManager():
 
     def __make_dataloaders(self, batch_size:int=64, num_workers:int=1, shuffle:bool=True, mode="train"):
         if mode=="train":
-            self.train_loader = torch.utils.data.DataLoader(self.train_dataset, batch_size=batch_size, shuffle=shuffle)
-            self.valid_loader = torch.utils.data.DataLoader(self.valid_dataset, batch_size=batch_size, shuffle=shuffle)
+            self.__train_loader = torch.utils.data.DataLoader(self.train_dataset, batch_size=batch_size, shuffle=shuffle)
+            self.__valid_loader = torch.utils.data.DataLoader(self.valid_dataset, batch_size=batch_size, shuffle=shuffle)
         elif mode=="test":
-            self.test_loader = torch.utils.data.DataLoader(self.test_dataset, batch_size=batch_size, shuffle=shuffle)
+            self.__test_loader = torch.utils.data.DataLoader(self.test_dataset, batch_size=batch_size, shuffle=shuffle)
     
     def __create_optimizer(self, lr:float, momentum:float=0.9):
         self.optimizer = self.optimizer_algorythm(self.model.parameters(), lr=lr, momentum=0.9)
 
     def __setup_tensorboard_basics(self, hyperparams:namedtuple, mode="train") -> SummaryWriter:
         tb = SummaryWriter(comment=f" {mode} lr={hyperparams.lr} epochs={hyperparams.epoch_number} batch size={hyperparams.batch_size} gamma={hyperparams.gamma} gamma_step={hyperparams.gamma_step} shuffle={hyperparams.shuffle}")
-        images, labels = next(iter(self.train_loader))
+        images, labels = next(iter(self.__train_loader))
         grid = torchvision.utils.make_grid(images)
         tb.add_image("First_batch", grid)
         tb.add_graph(self.model, images.cuda())
@@ -149,7 +153,7 @@ class RunManager():
         valid_accuracies = []
         train_batch_times = []
         valid_batch_times = []
-        for batch_x, batch_y in self.train_loader:
+        for batch_x, batch_y in self.__train_loader:
             train_batch_start = default_timer()
             batch_x, batch_y = batch_x.to(self.device), batch_y.to(self.device)
             pred = self.model(batch_x)
@@ -165,7 +169,7 @@ class RunManager():
             
         self.model.eval()    
         with torch.no_grad():
-            for batch_x, batch_y in self.valid_loader:
+            for batch_x, batch_y in self.__valid_loader:
                 valid_batch_start = default_timer()
                 batch_x, batch_y = batch_x.to(self.device), batch_y.to(self.device)
                 pred = self.model(batch_x)
@@ -220,7 +224,7 @@ class RunManager():
         test_losses = []
         test_accuracies = []
         with torch.no_grad():
-            for batch_x, batch_y in self.test_loader:
+            for batch_x, batch_y in self.__test_loader:
                 batch_x, batch_y = batch_x.to(self.device), batch_y.to(self.device)
                 pred = self.model(batch_x)
                 test_accuracy = self.__accuracy(pred, batch_y)

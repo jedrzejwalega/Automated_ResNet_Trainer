@@ -3,6 +3,8 @@ import train_test
 import warnings
 warnings.simplefilter(action='ignore', category=FutureWarning)
 
+
+
 def main():
     args = input_data.get_user_input()
     input_data.download_mnist(args.path)

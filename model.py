@@ -39,16 +39,16 @@ class ResNet50(nn.Module):
 class BottleneckBlock(nn.Module):
     def __init__(self, in_channels, downsampled_channels, stride=1):
         super(BottleneckBlock, self).__init__()
-        self.c_projection = nn.Conv2d(in_channels, downsampled_channels*4, kernel_size=1, stride=stride)
+        self.c_projection = nn.Conv2d(in_channels, downsampled_channels*4, kernel_size=1, stride=stride, bias=False)
         self.activation = nn.ReLU()
 
-        self.c1 = nn.Conv2d(in_channels, downsampled_channels, kernel_size=1, stride=stride)
+        self.c1 = nn.Conv2d(in_channels, downsampled_channels, kernel_size=1, stride=stride, bias=False)
         self.c1_batchnorm = nn.BatchNorm2d(downsampled_channels)
 
-        self.c2 = nn.Conv2d(downsampled_channels, downsampled_channels, kernel_size=3, padding=1)
+        self.c2 = nn.Conv2d(downsampled_channels, downsampled_channels, kernel_size=3, padding=1, bias=False)
         self.c2_batchnorm = nn.BatchNorm2d(downsampled_channels)
 
-        self.c3 = nn.Conv2d(downsampled_channels, downsampled_channels*4, kernel_size=1)
+        self.c3 = nn.Conv2d(downsampled_channels, downsampled_channels*4, kernel_size=1, bias=False)
         self.c3_batchnorm = nn.BatchNorm2d(downsampled_channels*4)
     
     def forward(self, x):
