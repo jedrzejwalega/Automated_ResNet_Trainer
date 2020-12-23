@@ -5,43 +5,55 @@ from torchvision.transforms import Resize
 import numpy as np
 import random
 
-
-
 class ResNet50(nn.Module):
     def __init__(self, out_activations, in_channels=1):
         super(ResNet50, self).__init__()
         self.conv1 = nn.Conv2d(in_channels, out_channels=64, stride=2, kernel_size=7, padding=3)
         self.max_pool = nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
-        self.bottleneck_layers = []
-        for params in [(64,64,2,1), (256,128,3,2), (512,256,5,2), (1024,512,2,2)]:
-            self.bottleneck_layer = BottleneckBlock(params[0], params[1], stride=params[3])
-            self.bottleneck_layers.append(self.bottleneck_layer)
-            for _ in range(params[2]):
-                self.bottleneck_layer = BottleneckBlock(params[1]*4, params[1])
-                self.bottleneck_layers.append(self.bottleneck_layer)
-        self.bottleneck_layers = nn.Sequential(*self.bottleneck_layers)
-        self.global_avg_pool = nn.AvgPool2d(kernel_size=1)
+        self.layer1 = nn.Sequential(self.__make_layer(3, 64, 1, 1))
+        self.layer2 = nn.Sequential(self.__make_layer(4, 256, 2, 2))
+        self.layer3 = nn.Sequential(self.__make_layer(6, 512, 2, 2))
+        self.layer4 = nn.Sequential(self.__make_layer(3, 1024, 2, 2))
         self.fully_connected = nn.Linear(2048, out_activations)
+    
+    def __make_layer(self, blocks_number, in_channels, downsampling_factor, stride):
+        stacked_bottlenecks = []
+        downsampled_block = BottleneckBlock(in_channels=in_channels, stride=stride, downsampling_factor=downsampling_factor)
+        in_channels = in_channels//downsampling_factor*4
+        stacked_bottlenecks.append(downsampled_block)
+        for num in range(blocks_number - 1):
+            normal_block = BottleneckBlock(in_channels=in_channels, stride=1, downsampling_factor=4)
+            stacked_bottlenecks.append(normal_block)
+        return nn.Sequential(*stacked_bottlenecks)
 
     def forward(self, x):
+        # First conv
         x = self.conv1(x)
+        # Max pooling
         x = self.max_pool(x)
-
-        for layer in self.bottleneck_layers:
-            x = layer(x)
-        
-        x = self.global_avg_pool(x)
-        x = torch.flatten(x, start_dim=1, end_dim=3)
+        # 64-channel residual blocks
+        x = self.layer1(x)
+        # 256-channel residual blocks
+        x = self.layer2(x)
+        # 512-channel residual blocks
+        x = self.layer3(x)
+        # 1024-channel residual blocks
+        x = self.layer4(x)
+        # Global average pooling
+        x = x.mean([2,3])
+        # Fully connected layer
         x = self.fully_connected(x)
         return x
 
 
 class BottleneckBlock(nn.Module):
-    def __init__(self, in_channels, downsampled_channels, stride=1):
+    def __init__(self, in_channels, downsampling_factor, stride=1):
         super(BottleneckBlock, self).__init__()
+        downsampled_channels = in_channels // downsampling_factor
+
         self.c_projection = nn.Conv2d(in_channels, downsampled_channels*4, kernel_size=1, stride=stride, bias=False)
         self.activation = nn.ReLU()
-
+        
         self.c1 = nn.Conv2d(in_channels, downsampled_channels, kernel_size=1, stride=stride, bias=False)
         self.c1_batchnorm = nn.BatchNorm2d(downsampled_channels)
 
