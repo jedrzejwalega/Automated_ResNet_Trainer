@@ -1,9 +1,5 @@
 import torch
 import torch.nn as nn
-from torchsummary import summary
-from torchvision.transforms import Resize
-import numpy as np
-import random
 
 class ResNet50(nn.Module):
     def __init__(self, out_activations, in_channels=1):
