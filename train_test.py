@@ -16,11 +16,10 @@ from collections import namedtuple
 from pickle import dumps, loads
 import fastai.learner
 import fastai.data
-import resnet
 
 
 class RunManager():
-    def __init__(self, learning_rates:List[float], epochs:List[int], batch_size:List[int]=[64], gamma:List[float]=[0.1], shuffle:List[bool]=[True], optimizer=optim.SGD, find_lr=False, gamma_step=[1]):
+    def __init__(self, learning_rates:List[float], epochs:List[int], architectures:List[str], batch_size:List[int]=[64], gamma:List[float]=[0.1], shuffle:List[bool]=[True], optimizer=optim.SGD, find_lr=False, gamma_step=[1]):
         self.__reproducible(seed=42)
         if find_lr:
             learning_rates = [None]
@@ -29,7 +28,8 @@ class RunManager():
                                 batch_size=batch_size,
                                 gamma=gamma,
                                 shuffle=shuffle,
-                                gamma_step=gamma_step)
+                                gamma_step=gamma_step,
+                                architectures=architectures)
         self.model = None
         self.optimizer_algorythm = optimizer
         self.optimizer = None
@@ -56,8 +56,14 @@ class RunManager():
     def __model_params(self, out_activations:int, in_channels:int=1):
         self.__create_model = partial(self.__create_model, out_activations=out_activations, in_channels=in_channels)
     
-    def __create_model(self, out_activations:int, in_channels:int=1):
-        self.model = model.ResNet50(out_activations, in_channels)
+    def __create_model(self, architecture, out_activations:int, in_channels:int=1):
+        available_architectures = {"resnet18":model.ResNet18,
+                                   "resnet34":model.ResNet34,
+                                   "resnet50":model.ResNet50,
+                                   "resnet101":model.ResNet101,
+                                   "resnet152":model.ResNet152}
+        chosen_model = available_architectures[architecture]
+        self.model = chosen_model(out_activations, in_channels)
 
     def pass_datasets(self, train_set:Tuple[torch.FloatTensor, torch.LongTensor], test_set:Tuple[torch.FloatTensor, torch.LongTensor]):
         assert len(train_set[0].shape) > 3 and len(test_set[0].shape) > 3, "You have to provide data in the form of an at least rank 4 tensor, with last 3 dimensions being: channels, height, width"
@@ -78,9 +84,8 @@ class RunManager():
     def train(self):
         if self.hyperparameters["learning_rates"] == [None]:
             best_learning_rates = self.__best_lr_for_hyperparameters()
-
         all_hyperparameters = [v for v in self.hyperparameters.values()]
-        hyperparam_combination = namedtuple("hyperparam_combination", "lr epoch_number batch_size gamma shuffle gamma_step")
+        hyperparam_combination = namedtuple("hyperparam_combination", "lr epoch_number batch_size gamma shuffle gamma_step architecture")
         averaged_epoch_results = namedtuple("averaged_epoch_results", "train_loss_mean valid_loss_mean train_accuracy_mean valid_accuracy_mean train_batch_time_mean valid_batch_time_mean")
         for hyperparams in product(*all_hyperparameters):
             hyperparams = hyperparam_combination(*hyperparams)
@@ -89,11 +94,11 @@ class RunManager():
                 hyperparams = hyperparam_combination(fitting_best_lr, *hyperparams[1:])
             self.__reproducible(seed=42)
             self.__make_dataloaders(hyperparams.batch_size, shuffle=hyperparams.shuffle)
-            self.__create_model()
+            self.__create_model(hyperparams.architecture)
             self.__create_optimizer(lr=hyperparams.lr)
             self.model = self.model.to(self.device)
             tb = self.__setup_tensorboard_basics(hyperparams)
-            print(f"Starting training, lr={hyperparams.lr}, batch size={hyperparams.batch_size}, gamma={hyperparams.gamma}, shuffle={hyperparams.shuffle}, gamma_step={hyperparams.gamma_step} for {hyperparams.epoch_number} epochs")
+            print(f"Starting training, architecture={hyperparams.architecture}, lr={hyperparams.lr}, batch size={hyperparams.batch_size}, gamma={hyperparams.gamma}, shuffle={hyperparams.shuffle}, gamma_step={hyperparams.gamma_step} for {hyperparams.epoch_number} epochs")
             for epoch in range(hyperparams.epoch_number):
                 if epoch % hyperparams.gamma_step == 0 and epoch > 0:
                     new_lr = hyperparams.lr * hyperparams.gamma
@@ -136,8 +141,8 @@ class RunManager():
     def __create_optimizer(self, lr:float, momentum:float=0.9):
         self.optimizer = self.optimizer_algorythm(self.model.parameters(), lr=lr, momentum=0.9)
 
-    def __setup_tensorboard_basics(self, hyperparams:namedtuple, mode="train") -> SummaryWriter:
-        tb = SummaryWriter(comment=f" {mode} lr={hyperparams.lr} epochs={hyperparams.epoch_number} batch size={hyperparams.batch_size} gamma={hyperparams.gamma} gamma_step={hyperparams.gamma_step} shuffle={hyperparams.shuffle}")
+    def __setup_tensorboard_basics(self, hyperparams:namedtuple) -> SummaryWriter:
+        tb = SummaryWriter(comment=f" {hyperparams.architecture} lr={hyperparams.lr} epochs={hyperparams.epoch_number} batch size={hyperparams.batch_size} gamma={hyperparams.gamma} gamma_step={hyperparams.gamma_step} shuffle={hyperparams.shuffle}")
         images, labels = next(iter(self.__train_loader))
         grid = torchvision.utils.make_grid(images)
         tb.add_image("First_batch", grid)
@@ -220,7 +225,7 @@ class RunManager():
                                 shuffle=False,
                                 mode="test")
         self.model.eval()
-        print(f"Starting testing, model from epoch number {self.best_run.epoch}, lr={self.best_run.hyperparams.lr}, batch_size={self.best_run.hyperparams.batch_size}, gamma={self.best_run.hyperparams.gamma}, gamma_step={self.best_run.hyperparams.gamma_step}")
+        print(f"Starting testing, model from epoch number {self.best_run.epoch}, architecture={self.best_run.hyperparams.architecture}, lr={self.best_run.hyperparams.lr}, batch_size={self.best_run.hyperparams.batch_size}, gamma={self.best_run.hyperparams.gamma}, gamma_step={self.best_run.hyperparams.gamma_step}")
         test_losses = []
         test_accuracies = []
         with torch.no_grad():

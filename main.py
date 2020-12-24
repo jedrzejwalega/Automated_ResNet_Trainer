@@ -16,7 +16,8 @@ def main():
                                     find_lr=args.find_lr, 
                                     batch_size=args.batch_size,
                                     gamma=args.gamma,
-                                    gamma_step=args.gamma_step)
+                                    gamma_step=args.gamma_step,
+                                    architectures=args.architecture)
     program.pass_datasets((train_images, train_labels), (test_images, test_labels))
     program.train()
     if args.test:

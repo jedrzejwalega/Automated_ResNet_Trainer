@@ -64,7 +64,16 @@ def get_user_input() -> argparse.Namespace:
                         type=str,
                         help="Save best model from the training sessions (based od validation accuracy) into a given path.",
                         required=False)
+    parser.add_argument("--architecture", "-a", 
+                        nargs="+",
+                        type=str,
+                        help="An arbitrary number of architectures to use in model training. Available nets: resnet18, resnet34, resnet50, resnet101, resnet152",
+                        required=True)
+
     args = parser.parse_args()
+    args.architecture = list(map(str.lower, args.architecture))
+    available_nets = set(["resnet18", "resnet34", "resnet50", "resnet101", "resnet152"])
+    assert all(net in available_nets for net in args.architecture), "Given model architecture is not available"
     if args.find_lr:
         assert not args.learning_rates, "You cannot pass custom learning rates when using automatic best learning rate option"
 

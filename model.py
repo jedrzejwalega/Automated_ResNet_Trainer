@@ -12,7 +12,7 @@ class ResNet(nn.Module):
         self.layer2 = None
         self.layer3 = None
         self.layer4 = None
-        self.fully_connected = nn.Linear(2048, out_activations)
+        self.fully_connected = None
     
     def make_bottleneck_layer(self, blocks_number, in_channels, downsampling_factor, stride):
         stacked_bottlenecks = []
@@ -60,7 +60,7 @@ class BasicBlock(nn.Module):
         self.c_projection = nn.Conv2d(in_channels, expanded_channels, kernel_size=1, stride=stride, bias=False)
         self.activation = nn.ReLU()
         
-        self.c1 = nn.Conv2d(in_channels, in_channels, kernel_size=3, stride=stride, bias=False)
+        self.c1 = nn.Conv2d(in_channels, in_channels, kernel_size=3, padding=1, stride=stride, bias=False)
         self.c1_batchnorm = nn.BatchNorm2d(in_channels)
 
         self.c2 = nn.Conv2d(in_channels, expanded_channels, kernel_size=3, padding=1, bias=False)
@@ -119,7 +119,8 @@ class ResNet18(ResNet):
         self.layer1 = nn.Sequential(self.make_basic_layer(2, 64, 2, 1))
         self.layer2 = nn.Sequential(self.make_basic_layer(2, 128, 2, 2))
         self.layer3 = nn.Sequential(self.make_basic_layer(2, 256, 2, 2))
-        self.layer4 = nn.Sequential(self.make_basic_layer(2, 512, 2, 2))
+        self.layer4 = nn.Sequential(self.make_basic_layer(2, 512, 1, 2))
+        self.fully_connected = nn.Linear(512, out_activations)
 
 class ResNet34(ResNet):
     def __init__(self, out_activations, in_channels=1):
@@ -127,7 +128,8 @@ class ResNet34(ResNet):
         self.layer1 = nn.Sequential(self.make_basic_layer(3, 64, 2, 1))
         self.layer2 = nn.Sequential(self.make_basic_layer(4, 128, 2, 2))
         self.layer3 = nn.Sequential(self.make_basic_layer(6, 256, 2, 2))
-        self.layer4 = nn.Sequential(self.make_basic_layer(3, 512, 2, 2))
+        self.layer4 = nn.Sequential(self.make_basic_layer(3, 512, 1, 2))
+        self.fully_connected = nn.Linear(512, out_activations)
 
 class ResNet50(ResNet):
     def __init__(self, out_activations, in_channels=1):
@@ -136,6 +138,7 @@ class ResNet50(ResNet):
         self.layer2 = nn.Sequential(self.make_bottleneck_layer(4, 256, 2, 2))
         self.layer3 = nn.Sequential(self.make_bottleneck_layer(6, 512, 2, 2))
         self.layer4 = nn.Sequential(self.make_bottleneck_layer(3, 1024, 2, 2))
+        self.fully_connected = nn.Linear(2048, out_activations)
 
 class ResNet101(ResNet):
     def __init__(self, out_activations, in_channels=1):
@@ -144,6 +147,7 @@ class ResNet101(ResNet):
         self.layer2 = nn.Sequential(self.make_bottleneck_layer(4, 256, 2, 2))
         self.layer3 = nn.Sequential(self.make_bottleneck_layer(23, 512, 2, 2))
         self.layer4 = nn.Sequential(self.make_bottleneck_layer(3, 1024, 2, 2))
+        self.fully_connected = nn.Linear(2048, out_activations)
 
 class ResNet152(ResNet):
     def __init__(self, out_activations):
@@ -152,3 +156,4 @@ class ResNet152(ResNet):
         self.layer2 = nn.Sequential(self.make_bottleneck_layer(4, 256, 2, 2))
         self.layer3 = nn.Sequential(self.make_bottleneck_layer(36, 512, 2, 2))
         self.layer4 = nn.Sequential(self.make_bottleneck_layer(3, 1024, 2, 2))
+        self.fully_connected = nn.Linear(2048, out_activations)
