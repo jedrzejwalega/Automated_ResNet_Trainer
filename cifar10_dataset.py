@@ -43,5 +43,5 @@ def unpack_data(dir_name, filename):
 
 def unpickle(file):
     with open(file, 'rb') as handle:
-        dict = pickle.load(handle, encoding='bytes')
-    return dict
+        unpickled = pickle.load(handle, encoding='bytes')
+    return unpickled
