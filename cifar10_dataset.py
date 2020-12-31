@@ -8,6 +8,8 @@ import pickle
 from PIL import Image
 from torchvision import transforms
 
+
+
 def download_cifar10(dir_name:str) -> None:
     cifar10_url = "http://www.cs.toronto.edu/~kriz/cifar-10-python.tar.gz"
     dir_name = Path(dir_name)
@@ -20,7 +22,7 @@ def download_cifar10(dir_name:str) -> None:
         tar.close()
         os.rename(dir_name/"cifar-10-batches-py", dir_name/"cifar10")
 
-def load_cifar10(dir_name:str, kind="train") -> None:
+def load_cifar10(dir_name:str, kind:str="train") -> None:
     dir_name = Path(dir_name)
     all_images = []
     all_labels = []
@@ -35,13 +37,13 @@ def load_cifar10(dir_name:str, kind="train") -> None:
             all_labels.append(labels)
     return torch.cat(all_images, dim=0), torch.cat(all_labels)
 
-def unpack_data(dir_name, filename):
+def unpack_data(dir_name: Path, filename: str):
     data = unpickle(dir_name/"cifar10"/filename)
-    images = torch.from_numpy(data[b"data"]).reshape((10000, 3, 32, 32))
-    labels = torch.tensor(data[b"labels"])
+    images = torch.from_numpy(data[b"data"]).float().reshape((-1, 3, 32, 32))
+    labels = torch.tensor(data[b"labels"]).long()
     return (images, labels)
 
-def unpickle(file):
+def unpickle(file: str):
     with open(file, 'rb') as handle:
         unpickled = pickle.load(handle, encoding='bytes')
     return unpickled

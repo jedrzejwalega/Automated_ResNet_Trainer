@@ -1,6 +1,6 @@
 import input_data
 import train_test
-import fmnist_dataset
+import cifar10_dataset
 import warnings
 warnings.simplefilter(action='ignore', category=FutureWarning)
 
@@ -8,9 +8,9 @@ warnings.simplefilter(action='ignore', category=FutureWarning)
 
 def main():
     args = input_data.get_user_input()
-    fmnist_dataset.download_mnist(args.path)
-    train_images, train_labels = fmnist_dataset.load_mnist(args.path)
-    test_images, test_labels = fmnist_dataset.load_mnist(args.path, kind="test")
+    cifar10_dataset.download_cifar10(args.path)
+    train_images, train_labels = cifar10_dataset.load_cifar10(args.path)
+    test_images, test_labels = cifar10_dataset.load_cifar10(args.path, kind="test")
     program = train_test.RunManager(learning_rates=args.learning_rates, 
                                     epochs=args.epochs,
                                     shuffle=args.shuffle, 
