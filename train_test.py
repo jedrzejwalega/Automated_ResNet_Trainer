@@ -192,10 +192,6 @@ class RunManager():
         
         return self.results(train_losses, valid_losses, train_accuracies, valid_accuracies, train_batch_times, valid_batch_times)
 
-    def check_for_nan(self, losses, nan_replacement):
-        losses = [loss if not np.isnan(loss) else nan_replacement for loss in losses]
-        return losses
-
     def adjust_lr(self, new_lr:float) -> None:
         for param_group in self.optimizer.param_groups:
             param_group["lr"] = new_lr
@@ -218,7 +214,6 @@ class RunManager():
             tb.add_scalar(plot_title, value, epoch)
         
         for param_name, param in self.model.named_parameters():
-            print(param_name, param)
             tb.add_histogram(param_name, param, epoch)
             tb.add_histogram(f"{param_name} gradient", param.grad, epoch)
     
