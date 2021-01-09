@@ -20,10 +20,13 @@ from sys import float_info
 
 
 class RunManager():
-    def __init__(self, learning_rates:List[float], epochs:List[int], architectures:List[str], batch_size:List[int]=[64], gamma:List[float]=[0.1], shuffle:List[bool]=[True], optimizer=optim.SGD, find_lr=False, gamma_step=[1]):
+    def __init__(self, learning_rates:List[float], epochs:List[int], architectures:List[str], batch_size:List[int]=[64], gamma:List[float]=[0.1], shuffle:List[bool]=[True], optimizer=optim.SGD, find_lr=False, gamma_step=[1], find_gamma_step=False):
         self.reproducible(seed=42)
         if find_lr:
             learning_rates = [None]
+        self.find_gamma_step = find_gamma_step
+        if self.find_gamma_step:
+            gamma_step = ["AUTO"]
         self.hyperparameters = dict(learning_rates=learning_rates,
                                 epochs=epochs,
                                 batch_size=batch_size,
@@ -88,6 +91,8 @@ class RunManager():
         all_hyperparameters = [v for v in self.hyperparameters.values()]
         hyperparam_combination = namedtuple("hyperparam_combination", "lr epoch_number batch_size gamma shuffle gamma_step architecture")
         averaged_epoch_results = namedtuple("averaged_epoch_results", "train_loss_mean valid_loss_mean train_accuracy_mean valid_accuracy_mean train_batch_time_mean valid_batch_time_mean")
+        slope_tracker = namedtuple("slope_tracker", "epoch previous_slope new_slope")
+
         for hyperparams in product(*all_hyperparameters):
             hyperparams = hyperparam_combination(*hyperparams)
             if not hyperparams.lr:
@@ -100,17 +105,30 @@ class RunManager():
             self.model = self.model.to(self.device)
             tb = self.setup_tensorboard_basics(hyperparams)
             print(f"Starting training, architecture={hyperparams.architecture}, lr={hyperparams.lr}, batch size={hyperparams.batch_size}, gamma={hyperparams.gamma}, shuffle={hyperparams.shuffle}, gamma_step={hyperparams.gamma_step} for {hyperparams.epoch_number} epochs")
+            previous_mean_result = float_info.max
+            previous_slope = float("-inf")
+
             for epoch in range(hyperparams.epoch_number):
-                if epoch % hyperparams.gamma_step == 0 and epoch > 0:
-                    new_lr = hyperparams.lr * hyperparams.gamma
-                    hyperparams = hyperparam_combination(new_lr, *hyperparams[1:])
+                if not self.find_gamma_step:
+                    if epoch % hyperparams.gamma_step == 0 and epoch > 0:
+                        new_lr = hyperparams.lr * hyperparams.gamma
+                        hyperparams = hyperparam_combination(new_lr, *hyperparams[1:])
                 start = default_timer()
                 result = self.train_valid_one_epoch(hyperparams.lr)
                 stop = default_timer()
                 mean_result = averaged_epoch_results(*map(mean, result))
+                new_slope = ((previous_mean_result - mean_result.valid_loss_mean)/(epoch-1 - epoch))
                 self.update_tensorboard_plots(tb, mean_result, epoch, hyperparams.lr)
                 self.save_model_if_best(mean_result, hyperparams, epoch+1)
+                graph_state = slope_tracker(epoch, previous_slope, new_slope)
+                decayed_lr = self.decay_learning_rate(hyperparams, graph_state)
                 print(f"Finished epoch {epoch+1} in {stop-start}s; train loss: {mean_result.train_loss_mean}, valid loss: {mean_result.valid_loss_mean}; train accuracy: {mean_result.train_accuracy_mean*100}%, valid_accuracy: {mean_result.valid_accuracy_mean*100}%")
+                if decayed_lr:
+                    print(f"Decayed lr - old learning rate = {hyperparams.lr}, new learning rate = {decayed_lr}, old slope = {previous_slope}, new slope = {new_slope}")
+                    hyperparams = hyperparam_combination(decayed_lr, *hyperparams[1:])
+                previous_mean_result = mean_result.valid_loss_mean
+                previous_slope = new_slope                
+            
             tb.close()
             print("Finished training\n" + "-" * 20 + "\n")
     
@@ -185,10 +203,6 @@ class RunManager():
                 valid_losses.append(loss.item())
                 valid_batch_stop = default_timer()
                 valid_batch_times.append(valid_batch_stop - valid_batch_start)
-        train_losses = self.check_for_nan(train_losses, float_info.max)
-        valid_losses = self.check_for_nan(valid_losses, float_info.max)
-        train_accuracies = self.check_for_nan(train_accuracies, float_info.min)
-        valid_accuracies = self.check_for_nan(valid_accuracies, float_info.min)
         
         return self.results(train_losses, valid_losses, train_accuracies, valid_accuracies, train_batch_times, valid_batch_times)
 
@@ -223,6 +237,15 @@ class RunManager():
             best_optimizer = dumps(self.optimizer)
             best_valid_loss_mean = mean_result.valid_loss_mean
             self.best_run = self.run(best_valid_loss_mean, best_model, best_optimizer, hyperparams, epoch)
+
+    def decay_learning_rate(self, hyperparams, graph_state):
+        if self.find_gamma_step:
+            if graph_state.previous_slope/graph_state.new_slope < 0.95:
+                new_lr = hyperparams.lr * hyperparams.gamma
+                return new_lr
+        elif graph_state.epoch+2 % hyperparams.gamma_step == 0:
+            new_lr = hyperparams.lr * hyperparams.gamma
+            return new_lr
 
     def test(self) -> None:
         self.model = loads(self.best_run.model)

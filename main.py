@@ -18,7 +18,8 @@ def main():
                                     batch_size=args.batch_size,
                                     gamma=args.gamma,
                                     gamma_step=args.gamma_step,
-                                    architectures=args.architecture)
+                                    architectures=args.architecture,
+                                    find_gamma_step=args.find_gamma_step)
     program.pass_datasets((train_images, train_labels), (test_images, test_labels))
     program.train()
     if args.test:

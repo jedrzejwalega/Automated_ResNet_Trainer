@@ -69,6 +69,10 @@ def get_user_input() -> argparse.Namespace:
                         type=str,
                         help="An arbitrary number of architectures to use in model training. Available nets: resnet18, resnet34, resnet50, resnet101, resnet152",
                         required=True)
+    parser.add_argument("--find_gamma_step", "-fg", 
+                        type=bool,
+                        help="Bool whether to find a gamma step based on loss plot slope.",
+                        required=True)
 
     args = parser.parse_args()
     args.architecture = list(map(str.lower, args.architecture))
