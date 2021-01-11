@@ -7,7 +7,7 @@ import tarfile
 import pickle
 from PIL import Image
 from torchvision import transforms
-
+from typing import Tuple
 
 
 def download_cifar10(dir_name:str) -> None:
@@ -37,13 +37,29 @@ def load_cifar10(dir_name:str, kind:str="train") -> None:
             all_labels.append(labels)
     return torch.cat(all_images, dim=0), torch.cat(all_labels)
 
-def unpack_data(dir_name: Path, filename: str):
+def unpack_data(dir_name: Path, filename: str) -> Tuple[torch.FloatTensor, torch.LongTensor]:
     data = unpickle(dir_name/"cifar10"/filename)
-    images = torch.from_numpy(data[b"data"]).float().reshape((-1, 3, 32, 32))
+    images = torch.from_numpy(data[b"data"]).float()
+    per_pixel_means = images.mean(axis=0)
+    images = (images - per_pixel_means).reshape((-1, 3, 32, 32))
     labels = torch.tensor(data[b"labels"]).long()
     return (images, labels)
+
+def pad_images(images:torch.FloatTensor) -> torch.FloatTensor:
+    padding_sides = torch.zeros((images.shape[0], 3, 32, 4))
+    padding_up_down = torch.zeros((images.shape[0], 3, 4, 40))
+    images = torch.cat((padding_sides, images, padding_sides), dim=-1)
+    images = torch.cat((padding_up_down, images, padding_up_down), dim=-2)
+    return images
 
 def unpickle(file: str):
     with open(file, 'rb') as handle:
         unpickled = pickle.load(handle, encoding='bytes')
     return unpickled
+
+def augment_data(images:torch.FloatTensor) -> torch.FloatTensor:
+    random_crop = transforms.RandomCrop(size=32, padding=4)
+    images = random_crop(images)
+    random_horizontal_flip = transforms.RandomHorizontalFlip(p=0.5)
+    images = random_horizontal_flip(images)
+    return images

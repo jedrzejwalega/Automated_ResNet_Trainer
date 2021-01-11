@@ -20,7 +20,17 @@ from sys import float_info
 
 
 class RunManager():
-    def __init__(self, learning_rates:List[float], epochs:List[int], architectures:List[str], batch_size:List[int]=[64], gamma:List[float]=[0.1], shuffle:List[bool]=[True], optimizer=optim.SGD, find_lr=False, gamma_step=[1], find_gamma_step=False):
+    def __init__(self, 
+                 learning_rates:List[float], 
+                 epochs:List[int], architectures:List[str], 
+                 batch_size:List[int]=[64], 
+                 gamma:List[float]=[0.1], 
+                 shuffle:List[bool]=[True], 
+                 optimizer=optim.SGD, 
+                 find_lr=False, gamma_step=[1], 
+                 find_gamma_step=False,
+                 transform=None):
+
         self.reproducible(seed=42)
         if find_lr:
             learning_rates = [None]
@@ -34,6 +44,7 @@ class RunManager():
                                 shuffle=shuffle,
                                 gamma_step=gamma_step,
                                 architectures=architectures)
+        self.transform = transform
         self.model = None
         self.optimizer_algorythm = optimizer
         self.optimizer = None
@@ -73,8 +84,8 @@ class RunManager():
         assert len(train_set[0].shape) > 3 and len(test_set[0].shape) > 3, "You have to provide data in the form of an at least rank 4 tensor, with last 3 dimensions being: channels, height, width"
         channels, out_activations = self.get_model_params(train_set)
         self.model_params(out_activations=out_activations, in_channels=channels)
-        train_set = dataset.ImageDataset(train_set)
-        test_set = dataset.ImageDataset(test_set)
+        train_set = dataset.ImageDataset(train_set, transform=self.transform)
+        test_set = dataset.ImageDataset(test_set, transform=self.transform)
         train_len = len(train_set)
         lengths = [int(train_len*0.8), int(train_len*0.2)]
         self.train_dataset, self.valid_dataset = torch.utils.data.random_split(train_set, lengths=lengths, generator=torch.Generator().manual_seed(42))
