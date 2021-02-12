@@ -32,7 +32,7 @@ def get_user_input() -> argparse.Namespace:
                         type=int,
                         help="An arbitrary number of batch sizes to use in model training. Defaults to 64.",
                         required=False,
-                        default=[64])
+                        default=[128])
     parser.add_argument("--epochs", "-e", 
                         nargs="+",
                         type=int,
@@ -45,15 +45,11 @@ def get_user_input() -> argparse.Namespace:
                         required=False,
                         default=[True])
     parser.add_argument("--find_lr", "-f",
-                        type=bool,
                         help="True/False - whether to use fastai's learning rate finder to find optimal learning rate. If True, you shouldn't pass your own learning rates.",
-                        required=False,
-                        default=False)
+                        action="store_true")
     parser.add_argument("--test", "-t",
-                        type=bool,
-                        help="Bool whether to automaticaly test best model from the training sessions on downloaded test set. Defaults to False.",
-                        required=False,
-                        default=False)
+                        help="Whether to automaticaly test best model from the training sessions on downloaded test set. Defaults to False.",
+                        action="store_true")
     parser.add_argument("--gamma_step", "-gs", 
                         nargs="+",
                         type=int,
@@ -70,9 +66,8 @@ def get_user_input() -> argparse.Namespace:
                         help="An arbitrary number of architectures to use in model training. Available nets: resnet18, resnet34, resnet50, resnet101, resnet152",
                         required=True)
     parser.add_argument("--find_gamma_step", "-fg", 
-                        type=bool,
-                        help="Bool whether to find a gamma step based on loss plot slope.",
-                        required=True)
+                        help="Whether to find a gamma step based on loss plot slope.",
+                        action="store_true")
 
     args = parser.parse_args()
     args.architecture = list(map(str.lower, args.architecture))
