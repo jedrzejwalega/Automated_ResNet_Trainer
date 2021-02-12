@@ -27,8 +27,9 @@ class RunManager():
                  gamma:List[float]=[0.1], 
                  shuffle:List[bool]=[True], 
                  optimizer=optim.SGD, 
-                 find_lr=False, gamma_step=[1], 
-                 find_gamma_step=False,
+                 find_lr:bool=False, 
+                 gamma_step:List[int]=[], 
+                 find_gamma_step:bool=False,
                  transform=None):
 
         self.reproducible(seed=42)
@@ -36,7 +37,7 @@ class RunManager():
             learning_rates = [None]
         self.find_gamma_step = find_gamma_step
         if self.find_gamma_step:
-            gamma_step = ["AUTO"]
+            gamma_step = ["AUTO"] + gamma_step
         self.hyperparameters = dict(learning_rates=learning_rates,
                                 epochs=epochs,
                                 batch_size=batch_size,
@@ -113,33 +114,30 @@ class RunManager():
             self.make_dataloaders(hyperparams.batch_size, shuffle=hyperparams.shuffle)
             self.create_model(hyperparams.architecture)
             self.create_optimizer(lr=hyperparams.lr)
+            if self.find_gamma_step:
+                scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(self.optimizer, verbose=True, factor=hyperparams.gamma)
+            else:
+                scheduler_milestones = [step for step in range(hyperparams.gamma_step, hyperparams.epoch_number, hyperparams.gamma_step)]
+                scheduler = torch.optim.lr_scheduler.MultiStepLR(self.optimizer, milestones=scheduler_milestones, verbose=True, gamma=hyperparams.gamma)
             self.model = self.model.to(self.device)
             tb = self.setup_tensorboard_basics(hyperparams)
+
             print(f"Starting training, architecture={hyperparams.architecture}, lr={hyperparams.lr}, batch size={hyperparams.batch_size}, gamma={hyperparams.gamma}, shuffle={hyperparams.shuffle}, gamma_step={hyperparams.gamma_step} for {hyperparams.epoch_number} epochs")
-            previous_mean_result = float_info.max
-            previous_slope = float("-inf")
 
             for epoch in range(hyperparams.epoch_number):
-                if not self.find_gamma_step:
-                    if epoch % hyperparams.gamma_step == 0 and epoch > 0:
-                        new_lr = hyperparams.lr * hyperparams.gamma
-                        hyperparams = hyperparam_combination(new_lr, *hyperparams[1:])
+
                 start = default_timer()
-                result = self.train_valid_one_epoch(hyperparams.lr)
+                result = self.train_valid_one_epoch()
                 stop = default_timer()
                 mean_result = averaged_epoch_results(*map(mean, result))
-                new_slope = ((previous_mean_result - mean_result.valid_loss_mean)/(epoch-1 - epoch))
-                self.update_tensorboard_plots(tb, mean_result, epoch, hyperparams.lr)
+                self.update_tensorboard_plots(tb, mean_result, epoch)
                 self.save_model_if_best(mean_result, hyperparams, epoch+1)
-                graph_state = slope_tracker(epoch, previous_slope, new_slope)
-                decayed_lr = self.decay_learning_rate(hyperparams, graph_state)
                 print(f"Finished epoch {epoch+1} in {stop-start}s; train loss: {mean_result.train_loss_mean}, valid loss: {mean_result.valid_loss_mean}; train accuracy: {mean_result.train_accuracy_mean*100}%, valid_accuracy: {mean_result.valid_accuracy_mean*100}%")
-                if decayed_lr:
-                    print(f"Decayed lr - old learning rate = {hyperparams.lr}, new learning rate = {decayed_lr}, old slope = {previous_slope}, new slope = {new_slope}")
-                    hyperparams = hyperparam_combination(decayed_lr, *hyperparams[1:])
-                previous_mean_result = mean_result.valid_loss_mean
-                previous_slope = new_slope                
-            
+                if self.find_gamma_step:
+                    scheduler.step(mean_result.valid_loss_mean)
+                else:
+                    scheduler.step()
+                
             tb.close()
             print("Finished training\n" + "-" * 20 + "\n")
     
@@ -179,8 +177,7 @@ class RunManager():
         tb.add_graph(self.model, images.cuda())
         return tb    
     
-    def train_valid_one_epoch(self, lr:float) -> Tuple[List[float], List[float]]:
-        self.adjust_lr(lr)
+    def train_valid_one_epoch(self) -> namedtuple:
         self.model.train()
         train_losses = []
         valid_losses = []
@@ -217,18 +214,14 @@ class RunManager():
         
         return self.results(train_losses, valid_losses, train_accuracies, valid_accuracies, train_batch_times, valid_batch_times)
 
-    def adjust_lr(self, new_lr:float) -> None:
-        for param_group in self.optimizer.param_groups:
-            param_group["lr"] = new_lr
-            lr = param_group["lr"]
-
     def accuracy(self, pred:torch.Tensor, batch_y:torch.Tensor):
         predicted_classes = torch.argmax(pred, dim=1)
         correct = (predicted_classes == batch_y).float().sum()
         accuracy = (correct/batch_y.shape[0]).item()
         return accuracy
     
-    def update_tensorboard_plots(self, tb:SummaryWriter, mean_result:namedtuple, epoch:int, learning_rate:float) -> None:
+    def update_tensorboard_plots(self, tb:SummaryWriter, mean_result:namedtuple, epoch:int) -> None:
+        learning_rate = self.get_lr()
         for plot_title, value in [("Train_loss", mean_result.train_loss_mean),
                                   ("Valid_loss", mean_result.valid_loss_mean),
                                   ("Train_accuracy", mean_result.train_accuracy_mean),
@@ -242,21 +235,16 @@ class RunManager():
             tb.add_histogram(param_name, param, epoch)
             tb.add_histogram(f"{param_name} gradient", param.grad, epoch)
     
+    def get_lr(self):
+        for param_group in self.optimizer.param_groups:
+            return param_group['lr']
+    
     def save_model_if_best(self, mean_result:namedtuple, hyperparams:namedtuple, epoch:int) -> None:
         if mean_result.valid_loss_mean < self.best_run.valid_loss_mean:
             best_model = dumps(self.model)
             best_optimizer = dumps(self.optimizer)
             best_valid_loss_mean = mean_result.valid_loss_mean
             self.best_run = self.run(best_valid_loss_mean, best_model, best_optimizer, hyperparams, epoch)
-
-    def decay_learning_rate(self, hyperparams, graph_state):
-        if self.find_gamma_step:
-            if graph_state.previous_slope/graph_state.new_slope < 0.95:
-                new_lr = hyperparams.lr * hyperparams.gamma
-                return new_lr
-        elif graph_state.epoch+2 % hyperparams.gamma_step == 0:
-            new_lr = hyperparams.lr * hyperparams.gamma
-            return new_lr
 
     def test(self) -> None:
         self.model = loads(self.best_run.model)
