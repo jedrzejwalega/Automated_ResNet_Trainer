@@ -16,8 +16,8 @@ from collections import namedtuple
 from pickle import dumps, loads
 import fastai.learner
 import fastai.data
-from sys import float_info
-
+import torchvision.datasets as datasets
+import torchvision.transforms as transforms
 
 class RunManager():
     def __init__(self, 
@@ -118,7 +118,7 @@ class RunManager():
                 scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(self.optimizer, verbose=True, factor=hyperparams.gamma)
             else:
                 scheduler_milestones = [step for step in range(hyperparams.gamma_step, hyperparams.epoch_number, hyperparams.gamma_step)]
-                scheduler = torch.optim.lr_scheduler.MultiStepLR(self.optimizer, milestones=scheduler_milestones, verbose=True, gamma=hyperparams.gamma)
+                scheduler = torch.optim.lr_scheduler.MultiStepLR(self.optimizer, milestones=[100, 150], verbose=True)
             self.model = self.model.to(self.device)
             tb = self.setup_tensorboard_basics(hyperparams)
 
@@ -161,13 +161,35 @@ class RunManager():
 
     def make_dataloaders(self, batch_size:int=64, num_workers:int=1, shuffle:bool=True, mode="train"):
         if mode=="train":
-            self.train_loader = torch.utils.data.DataLoader(self.train_dataset, batch_size=batch_size, shuffle=shuffle)
-            self.valid_loader = torch.utils.data.DataLoader(self.valid_dataset, batch_size=batch_size, shuffle=shuffle)
+            normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406],
+                                    std=[0.229, 0.224, 0.225])
+            self.train_loader = torch.utils.data.DataLoader(datasets.CIFAR10(root='./data', 
+                                                                        train=True, 
+                                                                        transform=transforms.Compose([
+                                                                        transforms.RandomHorizontalFlip(),
+                                                                        transforms.RandomCrop(32, 4),
+                                                                        transforms.ToTensor(),
+                                                                        normalize,]), 
+                                                                        download=True),
+                                                                        batch_size=128, 
+                                                                        shuffle=True, 
+                                                                        num_workers=4, 
+                                                                        pin_memory=True)
+
+            self.valid_loader = torch.utils.data.DataLoader(
+            datasets.CIFAR10(root='./data', train=False, transform=transforms.Compose([
+                transforms.ToTensor(),
+                normalize,
+            ])),
+            batch_size=128, shuffle=False,
+            num_workers=4, pin_memory=True)
+            # self.train_loader = torch.utils.data.DataLoader(self.train_dataset, batch_size=batch_size, shuffle=shuffle)
+            # self.valid_loader = torch.utils.data.DataLoader(self.valid_dataset, batch_size=batch_size, shuffle=shuffle)
         elif mode=="test":
             self.test_loader = torch.utils.data.DataLoader(self.test_dataset, batch_size=batch_size, shuffle=shuffle)
     
     def create_optimizer(self, lr:float, momentum:float=0.9):
-        self.optimizer = self.optimizer_algorythm(self.model.parameters(), lr=lr, momentum=0.9)
+        self.optimizer = self.optimizer_algorythm(self.model.parameters(), lr=lr, momentum=0.9, weight_decay=1e-4)
 
     def setup_tensorboard_basics(self, hyperparams:namedtuple) -> SummaryWriter:
         tb = SummaryWriter(comment=f" {hyperparams.architecture} lr={hyperparams.lr} epochs={hyperparams.epoch_number} batch size={hyperparams.batch_size} gamma={hyperparams.gamma} gamma_step={hyperparams.gamma_step} shuffle={hyperparams.shuffle}")
