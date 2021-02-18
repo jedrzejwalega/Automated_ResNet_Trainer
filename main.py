@@ -20,7 +20,8 @@ def main():
                                     gamma_step=args.gamma_step,
                                     architectures=args.architecture,
                                     find_gamma_step=args.find_gamma_step,
-                                    transform=cifar10_dataset.augment_data)
+                                    transform_train=cifar10_dataset.augment_data_train,
+                                    transform_valid=cifar10_dataset.augment_data_valid)
     program.pass_datasets((train_images, train_labels), (test_images, test_labels))
     program.train()
     if args.test:
