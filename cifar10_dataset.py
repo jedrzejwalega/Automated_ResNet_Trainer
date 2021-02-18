@@ -23,43 +23,57 @@ def download_cifar10(dir_name:str) -> None:
         os.rename(dir_name/"cifar-10-batches-py", dir_name/"cifar10")
 
 def load_cifar10(dir_name:str, kind:str="train") -> None:
+    train_list = [
+            ['data_batch_1', 'c99cafc152244af753f735de768cd75f'],
+            ['data_batch_2', 'd4bba439e000b95fd0a9bffe97cbabec'],
+            ['data_batch_3', '54ebc095f3ab1f0389bbae665268c751'],
+            ['data_batch_4', '634d18415352ddfa80567beed471001a'],
+            ['data_batch_5', '482c414d41f54cd18b22e5b47cb7c3cb'],
+        ]
+        
     dir_name = Path(dir_name)
     all_images = []
     all_labels = []
-    for filename in os.listdir(dir_name/"cifar10"):
-        if kind == "train" and "data" in filename:
-            images, labels = unpack_data(dir_name, filename)
-            all_images.append(images)
-            all_labels.append(labels)
-        elif kind == "test" and "test" in filename:
-            images, labels = unpack_data(dir_name, filename)
-            all_images.append(images)
-            all_labels.append(labels)
-    return torch.cat(all_images, dim=0), torch.cat(all_labels)
+    for file_name, checksum in train_list:
+        file_path = os.path.join(dir_name/"cifar10", file_name)
+        with open(file_path, 'rb') as f:
+            entry = pickle.load(f, encoding='latin1')
+            all_images.append(entry['data'])
+            if 'labels' in entry:
+                all_labels.extend(entry['labels'])
+            else:
+                all_labels.extend(entry['fine_labels'])
+    all_images = np.vstack(all_images).reshape(-1, 3, 32, 32)
+    return torch.from_numpy(all_images), torch.tensor(all_labels)
 
 def unpack_data(dir_name: Path, filename: str) -> Tuple[torch.FloatTensor, torch.LongTensor]:
     data = unpickle(dir_name/"cifar10"/filename)
-    images = torch.from_numpy(data[b"data"]).float()
-    per_pixel_means = images.mean(axis=0)
-    images = (images - per_pixel_means).reshape((-1, 3, 32, 32))
-    labels = torch.tensor(data[b"labels"]).long()
+    images = torch.from_numpy(data["data"])
+    labels = torch.tensor(data["labels"]).long()
     return (images, labels)
 
-def pad_images(images:torch.FloatTensor) -> torch.FloatTensor:
-    padding_sides = torch.zeros((images.shape[0], 3, 32, 4))
-    padding_up_down = torch.zeros((images.shape[0], 3, 4, 40))
-    images = torch.cat((padding_sides, images, padding_sides), dim=-1)
-    images = torch.cat((padding_up_down, images, padding_up_down), dim=-2)
-    return images
 
 def unpickle(file: str):
     with open(file, 'rb') as handle:
-        unpickled = pickle.load(handle, encoding='bytes')
+        unpickled = pickle.load(handle, encoding='latin1')
     return unpickled
 
-def augment_data(images:torch.FloatTensor) -> torch.FloatTensor:
-    random_crop = transforms.RandomCrop(size=32, padding=4)
-    images = random_crop(images)
-    random_horizontal_flip = transforms.RandomHorizontalFlip(p=0.5)
-    images = random_horizontal_flip(images)
-    return images
+def augment_data_train(image:torch.FloatTensor) -> torch.FloatTensor:
+    normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406],
+                                     std=[0.229, 0.224, 0.225])
+    
+    train_transforms = transforms.Compose([transforms.ToPILImage(),
+                        transforms.RandomHorizontalFlip(),
+                        transforms.RandomCrop(32, 4),
+                        transforms.ToTensor(),
+                        normalize,])
+    image = train_transforms(image)
+    return image
+
+def augment_data_valid(images):
+    normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406],
+                                     std=[0.229, 0.224, 0.225])
+    valid_transforms = transforms.Compose([transforms.ToTensor(),
+                                           normalize,])
+    image = valid_transforms(image)
+    return image
