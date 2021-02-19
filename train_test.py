@@ -18,6 +18,8 @@ import fastai.learner
 import fastai.data
 from sys import float_info
 
+import torchvision.models as models
+
 
 class RunManager():
     def __init__(self, 
@@ -81,7 +83,8 @@ class RunManager():
                                    "resnet101":model.ResNet101,
                                    "resnet152":model.ResNet152}
         chosen_model = available_architectures[architecture]
-        self.model = chosen_model(out_activations, in_channels)
+        # self.model = chosen_model(out_activations, in_channels)
+        self.model = models.resnet18(pretrained=False, num_classes=10)
 
     def pass_datasets(self, train_set:Tuple[torch.FloatTensor, torch.LongTensor], test_set:Tuple[torch.FloatTensor, torch.LongTensor]):
         assert len(train_set[0].shape) > 3 and len(test_set[0].shape) > 3, "You have to provide data in the form of an at least rank 4 tensor, with last 3 dimensions being: channels, height, width"
@@ -92,7 +95,9 @@ class RunManager():
         train_len = len(train_set)
         lengths = [int(train_len*0.8), int(train_len*0.2)]
         self.train_dataset, self.valid_dataset = torch.utils.data.random_split(train_set, lengths=lengths, generator=torch.Generator().manual_seed(42))
-        self.valid_dataset.transform = self.transform_valid
+        print(self.valid_dataset.dataset.transform)
+        self.valid_dataset.dataset.transform = self.transform_valid
+        print(self.valid_dataset.dataset.transform)
         self.test_dataset = test_set
     
     def get_model_params(self, train_set):
@@ -121,7 +126,7 @@ class RunManager():
                 scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(self.optimizer, verbose=True, factor=hyperparams.gamma)
             else:
                 scheduler_milestones = [step for step in range(hyperparams.gamma_step, hyperparams.epoch_number, hyperparams.gamma_step)]
-                scheduler = torch.optim.lr_scheduler.MultiStepLR(self.optimizer, milestones=scheduler_milestones, verbose=True, gamma=hyperparams.gamma)
+                scheduler = torch.optim.lr_scheduler.MultiStepLR(self.optimizer, milestones=[100, 150], verbose=True, gamma=hyperparams.gamma)
             self.model = self.model.to(self.device)
             tb = self.setup_tensorboard_basics(hyperparams)
 
@@ -170,7 +175,7 @@ class RunManager():
             self.test_loader = torch.utils.data.DataLoader(self.test_dataset, batch_size=batch_size, shuffle=shuffle, num_workers=4, pin_memory=True)
     
     def create_optimizer(self, lr:float, momentum:float=0.9):
-        self.optimizer = self.optimizer_algorythm(self.model.parameters(), lr=lr, momentum=0.9)
+        self.optimizer = self.optimizer_algorythm(self.model.parameters(), lr=lr, momentum=0.9, weight_decay=1e-4)
 
     def setup_tensorboard_basics(self, hyperparams:namedtuple) -> SummaryWriter:
         tb = SummaryWriter(comment=f" {hyperparams.architecture} lr={hyperparams.lr} epochs={hyperparams.epoch_number} batch size={hyperparams.batch_size} gamma={hyperparams.gamma} gamma_step={hyperparams.gamma_step} shuffle={hyperparams.shuffle}")

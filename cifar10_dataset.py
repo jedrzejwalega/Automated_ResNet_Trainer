@@ -70,10 +70,10 @@ def augment_data_train(image:torch.FloatTensor) -> torch.FloatTensor:
     image = train_transforms(image)
     return image
 
-def augment_data_valid(images):
+def augment_data_valid(image):
+    image = image.float()
     normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406],
                                      std=[0.229, 0.224, 0.225])
-    valid_transforms = transforms.Compose([transforms.ToTensor(),
-                                           normalize,])
+    valid_transforms = transforms.Compose([normalize,])
     image = valid_transforms(image)
     return image
