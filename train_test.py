@@ -91,13 +91,15 @@ class RunManager():
         channels, out_activations = self.get_model_params(train_set)
         self.model_params(out_activations=out_activations, in_channels=channels)
         train_set = dataset.ImageDataset(train_set, transform=self.transform_train)
-        test_set = dataset.ImageDataset(test_set, transform=self.transform_valid)
+        test_set = dataset.ImageDataset(test_set, transform=self.transform_train)
         train_len = len(train_set)
         lengths = [int(train_len*0.8), int(train_len*0.2)]
-        self.train_dataset, self.valid_dataset = torch.utils.data.random_split(train_set, lengths=lengths, generator=torch.Generator().manual_seed(42))
-        print(self.valid_dataset.dataset.transform)
-        self.valid_dataset.dataset.transform = self.transform_valid
-        print(self.valid_dataset.dataset.transform)
+        # self.train_dataset, self.valid_dataset = torch.utils.data.random_split(train_set, lengths=lengths, generator=torch.Generator().manual_seed(42))
+        # print(self.valid_dataset.dataset.transform)
+        # self.valid_dataset.dataset.transform = self.transform_valid
+        # print(self.valid_dataset.dataset.transform)
+        self.train_dataset = train_set
+        self.valid_dataset = test_set
         self.test_dataset = test_set
     
     def get_model_params(self, train_set):

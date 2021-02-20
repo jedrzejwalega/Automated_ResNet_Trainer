@@ -30,11 +30,17 @@ def load_cifar10(dir_name:str, kind:str="train") -> None:
             ['data_batch_4', '634d18415352ddfa80567beed471001a'],
             ['data_batch_5', '482c414d41f54cd18b22e5b47cb7c3cb'],
         ]
-        
+    test_list = [
+    ['test_batch', '40351d587109b95175f43aff81a1287e']]
+    if kind == "train":
+        file_list = train_list
+    else:
+        file_list = test_list
+
     dir_name = Path(dir_name)
     all_images = []
     all_labels = []
-    for file_name, checksum in train_list:
+    for file_name, checksum in file_list:
         file_path = os.path.join(dir_name/"cifar10", file_name)
         with open(file_path, 'rb') as f:
             entry = pickle.load(f, encoding='latin1')
