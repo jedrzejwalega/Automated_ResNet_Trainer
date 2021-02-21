@@ -19,6 +19,9 @@ import fastai.data
 from sys import float_info
 
 import torchvision.models as models
+import torchvision.datasets as datasets
+import torchvision.transforms as transforms
+
 
 
 class RunManager():
@@ -281,3 +284,22 @@ class RunManager():
         print(f"Writing best model from epoch number {self.best_run.epoch}, lr={self.best_run.hyperparams.lr}, batch_size={self.best_run.hyperparams.batch_size}, gamma={self.best_run.hyperparams.gamma}, gamma_step={self.best_run.hyperparams.gamma_step}...")
         torch.save(self.best_run.model, path)
         print("Done.")
+
+
+train_loader = torch.utils.data.DataLoader(
+    datasets.CIFAR10(root='./data', train=True, transform=transforms.Compose([
+        transforms.RandomHorizontalFlip(),
+        transforms.RandomCrop(32, 4),
+        transforms.ToTensor(),
+        normalize,
+    ]), download=True),
+    batch_size=args.batch_size, shuffle=True,
+    num_workers=args.workers, pin_memory=True)
+
+val_loader = torch.utils.data.DataLoader(
+    datasets.CIFAR10(root='./data', train=False, transform=transforms.Compose([
+        transforms.ToTensor(),
+        normalize,
+    ])),
+    batch_size=128, shuffle=False,
+    num_workers=args.workers, pin_memory=True)
