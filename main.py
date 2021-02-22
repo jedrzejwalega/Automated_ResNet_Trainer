@@ -1,3 +1,4 @@
+
 import input_data
 import train_test
 import cifar10_dataset
@@ -11,9 +12,6 @@ def main():
     cifar10_dataset.download_cifar10(args.path)
     train_images, train_labels = cifar10_dataset.load_cifar10(args.path)
     test_images, test_labels = cifar10_dataset.load_cifar10(args.path, kind="test")
-    print(test_images.shape)
-    print(train_images.shape)
-
     program = train_test.RunManager(learning_rates=args.learning_rates, 
                                     epochs=args.epochs,
                                     shuffle=args.shuffle, 
@@ -21,6 +19,7 @@ def main():
                                     batch_size=args.batch_size,
                                     gamma=args.gamma,
                                     gamma_step=args.gamma_step,
+                                    momentum=args.momentum,
                                     architectures=args.architecture,
                                     find_gamma_step=args.find_gamma_step,
                                     transform_train=cifar10_dataset.augment_data_train,

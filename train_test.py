@@ -17,23 +17,22 @@ from pickle import dumps, loads
 import fastai.learner
 import fastai.data
 from sys import float_info
+from helper_functions import AverageMeter
 
 import torchvision.models as models
-import torchvision.datasets as datasets
-import torchvision.transforms as transforms
-
-
 
 class RunManager():
     def __init__(self, 
                  learning_rates:List[float], 
                  epochs:List[int], architectures:List[str], 
                  batch_size:List[int]=[64], 
-                 gamma:List[float]=[0.1], 
+                 gamma:List[float]=[0.1],
+                 momentum:List[float]=[0.9],
+                 weight_decay:List[float]=[1e-4], 
                  shuffle:List[bool]=[True], 
                  optimizer=optim.SGD, 
                  find_lr:bool=False, 
-                 gamma_step:List[int]=[], 
+                 gamma_step:List[int]=[3], 
                  find_gamma_step:bool=False,
                  transform_train=None,
                  transform_valid=None):
@@ -48,6 +47,8 @@ class RunManager():
                                 epochs=epochs,
                                 batch_size=batch_size,
                                 gamma=gamma,
+                                weight_decay=weight_decay,
+                                momentum=momentum,
                                 shuffle=shuffle,
                                 gamma_step=gamma_step,
                                 architectures=architectures)
@@ -65,10 +66,10 @@ class RunManager():
         use_cuda = torch.cuda.is_available()
         self.device = torch.device("cuda" if use_cuda else "cpu")
         self.loss_func = nn.CrossEntropyLoss().to(self.device)
-        self.results = namedtuple("results", "train_losses valid_losses train_accuracies valid_accuracies train_batch_times valid_batch_times")
-        self.run = namedtuple("run", "valid_loss_mean model optimizer hyperparams epoch")
+        self.results = namedtuple("results", "train_loss valid_loss train_accuracy valid_accuracy train_batch_time valid_batch_time")
+        self.run = namedtuple("run", "valid_loss model optimizer hyperparams epoch")
         self.best_run = self.run(float("inf"), None, None, None, None)
-    
+
     def reproducible(self, seed:int):
         random.seed(seed)
         np.random.seed(seed)
@@ -79,45 +80,38 @@ class RunManager():
     def model_params(self, out_activations:int, in_channels:int=1):
         self.create_model = partial(self.create_model, out_activations=out_activations, in_channels=in_channels)
     
-    def create_model(self, architecture, out_activations:int, in_channels:int=1):
+    def create_model(self, architecture, out_activations:int, in_channels:int=3):
         available_architectures = {"resnet18":model.ResNet18,
                                    "resnet34":model.ResNet34,
                                    "resnet50":model.ResNet50,
                                    "resnet101":model.ResNet101,
                                    "resnet152":model.ResNet152}
         chosen_model = available_architectures[architecture]
-        # self.model = chosen_model(out_activations, in_channels)
-        self.model = models.resnet18(pretrained=False, num_classes=10)
+        self.model = chosen_model(out_activations, in_channels)
 
     def pass_datasets(self, train_set:Tuple[torch.FloatTensor, torch.LongTensor], test_set:Tuple[torch.FloatTensor, torch.LongTensor]):
         assert len(train_set[0].shape) > 3 and len(test_set[0].shape) > 3, "You have to provide data in the form of an at least rank 4 tensor, with last 3 dimensions being: channels, height, width"
+        train_set = dataset.ImageDataset(train_set, transform=self.transform_train)
+        test_set = dataset.ImageDataset(test_set, transform=self.transform_valid)
         channels, out_activations = self.get_model_params(train_set)
         self.model_params(out_activations=out_activations, in_channels=channels)
-        train_set = dataset.ImageDataset(train_set, transform=self.transform_train)
-        test_set = dataset.ImageDataset(test_set, transform=self.transform_train)
         train_len = len(train_set)
         lengths = [int(train_len*0.8), int(train_len*0.2)]
-        # self.train_dataset, self.valid_dataset = torch.utils.data.random_split(train_set, lengths=lengths, generator=torch.Generator().manual_seed(42))
-        # print(self.valid_dataset.dataset.transform)
-        # self.valid_dataset.dataset.transform = self.transform_valid
-        # print(self.valid_dataset.dataset.transform)
-        self.train_dataset = train_set
-        self.valid_dataset = test_set
+        self.train_dataset, self.valid_dataset = torch.utils.data.random_split(train_set, lengths=lengths, generator=torch.Generator().manual_seed(42))
+        self.valid_dataset.dataset.transform = self.transform_valid
         self.test_dataset = test_set
     
     def get_model_params(self, train_set):
-        in_channels = train_set[0].shape[-3]
-        out_activations = len(torch.unique(train_set[1]))
+        in_channels = train_set.get_channels()
+        out_activations = len(torch.unique(torch.tensor(train_set.data[1])))
         return in_channels, out_activations
     
     def train(self):
         if self.hyperparameters["learning_rates"] == [None]:
             best_learning_rates = self.best_lr_for_hyperparameters()
         all_hyperparameters = [v for v in self.hyperparameters.values()]
-        hyperparam_combination = namedtuple("hyperparam_combination", "lr epoch_number batch_size gamma shuffle gamma_step architecture")
-        averaged_epoch_results = namedtuple("averaged_epoch_results", "train_loss_mean valid_loss_mean train_accuracy_mean valid_accuracy_mean train_batch_time_mean valid_batch_time_mean")
-        slope_tracker = namedtuple("slope_tracker", "epoch previous_slope new_slope")
-
+        hyperparam_combination = namedtuple("hyperparam_combination", "lr epoch_number batch_size gamma weight_decay momentum shuffle gamma_step architecture")
+        
         for hyperparams in product(*all_hyperparameters):
             hyperparams = hyperparam_combination(*hyperparams)
             if not hyperparams.lr:
@@ -126,28 +120,37 @@ class RunManager():
             self.reproducible(seed=42)
             self.make_dataloaders(hyperparams.batch_size, shuffle=hyperparams.shuffle)
             self.create_model(hyperparams.architecture)
-            self.create_optimizer(lr=hyperparams.lr)
+            self.create_optimizer(lr=hyperparams.lr, momentum=hyperparams.momentum, weight_decay=hyperparams.weight_decay)
             if self.find_gamma_step:
                 scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(self.optimizer, verbose=True, factor=hyperparams.gamma)
             else:
                 scheduler_milestones = [step for step in range(hyperparams.gamma_step, hyperparams.epoch_number, hyperparams.gamma_step)]
-                scheduler = torch.optim.lr_scheduler.MultiStepLR(self.optimizer, milestones=[100, 150], verbose=True, gamma=hyperparams.gamma)
+                scheduler = torch.optim.lr_scheduler.MultiStepLR(self.optimizer, milestones=scheduler_milestones, verbose=True, gamma=hyperparams.gamma)
+            self.model = torch.nn.DataParallel(self.model)
             self.model = self.model.to(self.device)
             tb = self.setup_tensorboard_basics(hyperparams)
 
-            print(f"Starting training, architecture={hyperparams.architecture}, lr={hyperparams.lr}, batch size={hyperparams.batch_size}, gamma={hyperparams.gamma}, shuffle={hyperparams.shuffle}, gamma_step={hyperparams.gamma_step} for {hyperparams.epoch_number} epochs")
+            print(f"Starting training," 
+                  f"architecture={hyperparams.architecture}, " 
+                  f"lr={hyperparams.lr}, " 
+                  f"batch size={hyperparams.batch_size}, " 
+                  f"gamma={hyperparams.gamma}, " 
+                  f"momentum={hyperparams.momentum}, " 
+                  f"weight decay={hyperparams.weight_decay}, " 
+                  f"shuffle={hyperparams.shuffle}, " 
+                  f"gamma step={hyperparams.gamma_step} " 
+                  f"for {hyperparams.epoch_number} epochs")
 
             for epoch in range(hyperparams.epoch_number):
 
                 start = default_timer()
                 result = self.train_valid_one_epoch()
                 stop = default_timer()
-                mean_result = averaged_epoch_results(*map(mean, result))
-                self.update_tensorboard_plots(tb, mean_result, epoch)
-                self.save_model_if_best(mean_result, hyperparams, epoch+1)
-                print(f"Finished epoch {epoch+1} in {stop-start}s; train loss: {mean_result.train_loss_mean}, valid loss: {mean_result.valid_loss_mean}; train accuracy: {mean_result.train_accuracy_mean*100}%, valid_accuracy: {mean_result.valid_accuracy_mean*100}%")
+                self.update_tensorboard_plots(tb, result, epoch)
+                self.save_model_if_best(result, hyperparams, epoch+1)
+                print(f"Finished epoch {epoch+1} in {stop-start}s; train loss: {result.train_loss}, valid loss: {result.valid_loss}; train accuracy: {result.train_accuracy*100}%, valid_accuracy: {result.valid_accuracy*100}%")
                 if self.find_gamma_step:
-                    scheduler.step(mean_result.valid_loss_mean)
+                    scheduler.step(result.valid_loss)
                 else:
                     scheduler.step()
                 
@@ -174,13 +177,13 @@ class RunManager():
 
     def make_dataloaders(self, batch_size:int=64, num_workers:int=1, shuffle:bool=True, mode="train"):
         if mode=="train":
-            self.train_loader = torch.utils.data.DataLoader(self.train_dataset, batch_size=batch_size, shuffle=shuffle, num_workers=4, pin_memory=True)
-            self.valid_loader = torch.utils.data.DataLoader(self.valid_dataset, batch_size=batch_size, shuffle=shuffle, num_workers=4, pin_memory=True)
+            self.train_loader = torch.utils.data.DataLoader(self.train_dataset, batch_size=batch_size, shuffle=shuffle, num_workers=num_workers, pin_memory=True)
+            self.valid_loader = torch.utils.data.DataLoader(self.valid_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers, pin_memory=True)
         elif mode=="test":
-            self.test_loader = torch.utils.data.DataLoader(self.test_dataset, batch_size=batch_size, shuffle=shuffle, num_workers=4, pin_memory=True)
+            self.test_loader = torch.utils.data.DataLoader(self.test_dataset, batch_size=batch_size, shuffle=shuffle, num_workers=num_workers, pin_memory=True)
     
-    def create_optimizer(self, lr:float, momentum:float=0.9):
-        self.optimizer = self.optimizer_algorythm(self.model.parameters(), lr=lr, momentum=0.9, weight_decay=1e-4)
+    def create_optimizer(self, lr:float, momentum:float=0.9, weight_decay:float=1e-4):
+        self.optimizer = self.optimizer_algorythm(self.model.parameters(), lr=lr, momentum=momentum, weight_decay=weight_decay)
 
     def setup_tensorboard_basics(self, hyperparams:namedtuple) -> SummaryWriter:
         tb = SummaryWriter(comment=f" {hyperparams.architecture} lr={hyperparams.lr} epochs={hyperparams.epoch_number} batch size={hyperparams.batch_size} gamma={hyperparams.gamma} gamma_step={hyperparams.gamma_step} shuffle={hyperparams.shuffle}")
@@ -192,25 +195,26 @@ class RunManager():
     
     def train_valid_one_epoch(self) -> namedtuple:
         self.model.train()
-        train_losses = []
-        valid_losses = []
-        train_accuracies = []
-        valid_accuracies = []
-        train_batch_times = []
-        valid_batch_times = []
+        train_losses = AverageMeter()
+        valid_losses = AverageMeter()
+        train_accuracies = AverageMeter()
+        valid_accuracies = AverageMeter()
+        train_batch_times = AverageMeter()
+        valid_batch_times = AverageMeter()
+
         for batch_x, batch_y in self.train_loader:
             train_batch_start = default_timer()
             batch_x, batch_y = batch_x.to(self.device), batch_y.to(self.device)
             pred = self.model(batch_x)
             accuracy = self.accuracy(pred, batch_y)
-            train_accuracies.append(accuracy)
+            train_accuracies.update(accuracy, batch_x.shape[0])
             loss = self.loss_func(pred, batch_y)
-            train_losses.append(loss.item())
+            train_losses.update(loss.item(), batch_x.shape[0])
             self.optimizer.zero_grad()
             loss.backward()
             self.optimizer.step()
             train_batch_stop = default_timer()
-            train_batch_times.append(train_batch_stop - train_batch_start)
+            train_batch_times.update(train_batch_stop - train_batch_start, 1)
             
         self.model.eval()    
         with torch.no_grad():
@@ -219,13 +223,13 @@ class RunManager():
                 batch_x, batch_y = batch_x.to(self.device), batch_y.to(self.device)
                 pred = self.model(batch_x)
                 valid_accuracy = self.accuracy(pred, batch_y)
-                valid_accuracies.append(valid_accuracy)
+                valid_accuracies.update(valid_accuracy, batch_x.shape[0])
                 loss = self.loss_func(pred, batch_y)
-                valid_losses.append(loss.item())
+                valid_losses.update(loss.item(), batch_x.shape[0])
                 valid_batch_stop = default_timer()
-                valid_batch_times.append(valid_batch_stop - valid_batch_start)
-        
-        return self.results(train_losses, valid_losses, train_accuracies, valid_accuracies, train_batch_times, valid_batch_times)
+                valid_batch_times.update(valid_batch_stop - valid_batch_start, 1)
+
+        return self.results(train_losses.avg, valid_losses.avg, train_accuracies.avg, valid_accuracies.avg, train_batch_times.avg, valid_batch_times.avg)
 
     def accuracy(self, pred:torch.Tensor, batch_y:torch.Tensor):
         predicted_classes = torch.argmax(pred, dim=1)
@@ -233,14 +237,14 @@ class RunManager():
         accuracy = (correct/batch_y.shape[0]).item()
         return accuracy
     
-    def update_tensorboard_plots(self, tb:SummaryWriter, mean_result:namedtuple, epoch:int) -> None:
+    def update_tensorboard_plots(self, tb:SummaryWriter, result:namedtuple, epoch:int) -> None:
         learning_rate = self.get_lr()
-        for plot_title, value in [("Train_loss", mean_result.train_loss_mean),
-                                  ("Valid_loss", mean_result.valid_loss_mean),
-                                  ("Train_accuracy", mean_result.train_accuracy_mean),
-                                  ("Valid_accuracy", mean_result.valid_accuracy_mean),
-                                  ("Train_batch_time", mean_result.train_batch_time_mean),
-                                  ("Valid_batch_time", mean_result.valid_batch_time_mean),
+        for plot_title, value in [("Train_loss", result.train_loss),
+                                  ("Valid_loss", result.valid_loss),
+                                  ("Train_accuracy", result.train_accuracy),
+                                  ("Valid_accuracy", result.valid_accuracy),
+                                  ("Train_batch_time", result.train_batch_time),
+                                  ("Valid_batch_time", result.valid_batch_time),
                                   ("Train_learning_rate", learning_rate)]:
             tb.add_scalar(plot_title, value, epoch)
         
@@ -252,12 +256,12 @@ class RunManager():
         for param_group in self.optimizer.param_groups:
             return param_group['lr']
     
-    def save_model_if_best(self, mean_result:namedtuple, hyperparams:namedtuple, epoch:int) -> None:
-        if mean_result.valid_loss_mean < self.best_run.valid_loss_mean:
+    def save_model_if_best(self, result:namedtuple, hyperparams:namedtuple, epoch:int) -> None:
+        if result.valid_loss < self.best_run.valid_loss:
             best_model = dumps(self.model)
             best_optimizer = dumps(self.optimizer)
-            best_valid_loss_mean = mean_result.valid_loss_mean
-            self.best_run = self.run(best_valid_loss_mean, best_model, best_optimizer, hyperparams, epoch)
+            best_valid_loss = result.valid_loss
+            self.best_run = self.run(best_valid_loss, best_model, best_optimizer, hyperparams, epoch)
 
     def test(self) -> None:
         self.model = loads(self.best_run.model)
@@ -284,22 +288,3 @@ class RunManager():
         print(f"Writing best model from epoch number {self.best_run.epoch}, lr={self.best_run.hyperparams.lr}, batch_size={self.best_run.hyperparams.batch_size}, gamma={self.best_run.hyperparams.gamma}, gamma_step={self.best_run.hyperparams.gamma_step}...")
         torch.save(self.best_run.model, path)
         print("Done.")
-
-
-train_loader = torch.utils.data.DataLoader(
-    datasets.CIFAR10(root='./data', train=True, transform=transforms.Compose([
-        transforms.RandomHorizontalFlip(),
-        transforms.RandomCrop(32, 4),
-        transforms.ToTensor(),
-        normalize,
-    ]), download=True),
-    batch_size=args.batch_size, shuffle=True,
-    num_workers=args.workers, pin_memory=True)
-
-val_loader = torch.utils.data.DataLoader(
-    datasets.CIFAR10(root='./data', train=False, transform=transforms.Compose([
-        transforms.ToTensor(),
-        normalize,
-    ])),
-    batch_size=128, shuffle=False,
-    num_workers=args.workers, pin_memory=True)

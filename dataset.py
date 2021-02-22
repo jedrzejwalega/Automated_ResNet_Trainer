@@ -15,3 +15,6 @@ class ImageDataset(torch.utils.data.Dataset):
         if self.transform:
             item = self.transform(item)
         return (item, label)
+    
+    def get_channels(self):
+        return self.data[0].shape[-1]

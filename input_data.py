@@ -56,6 +56,16 @@ def get_user_input() -> argparse.Namespace:
                         help="An arbitrary number of gamma steps (how many epochs till gamma is applied to change the learning rate). Defaults to 3.",
                         required=False,
                         default=[3])
+    parser.add_argument("--weight_decay", "-wd", 
+                        nargs="+",
+                        type=float,
+                        help="An arbitrary number of weight decay values to apply to the optimizer.",
+                        required=False)
+    parser.add_argument("--momentum", "-m", 
+                    nargs="+",
+                    type=float,
+                    help="An arbitrary number of momentum values to apply to the optimizer.",
+                    required=False)
     parser.add_argument("--write_model", "-w",
                         type=str,
                         help="Save best model from the training sessions (based od validation accuracy) into a given path.",
