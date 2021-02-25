@@ -19,7 +19,7 @@ import fastai.data
 from sys import float_info
 from helper_functions import AverageMeter
 
-import torchvision.models as models
+
 
 class RunManager():
     def __init__(self, 
