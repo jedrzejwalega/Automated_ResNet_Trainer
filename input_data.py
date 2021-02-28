@@ -60,12 +60,14 @@ def get_user_input() -> argparse.Namespace:
                         nargs="+",
                         type=float,
                         help="An arbitrary number of weight decay values to apply to the optimizer.",
-                        required=False)
+                        required=False,
+                        default=[1e-4])
     parser.add_argument("--momentum", "-m", 
                     nargs="+",
                     type=float,
                     help="An arbitrary number of momentum values to apply to the optimizer.",
-                    required=False)
+                    required=False,
+                    default=[0.9])
     parser.add_argument("--write_model", "-w",
                         type=str,
                         help="Save best model from the training sessions (based od validation accuracy) into a given path.",

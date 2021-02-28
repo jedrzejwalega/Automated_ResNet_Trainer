@@ -36,7 +36,6 @@ class RunManager():
                  find_gamma_step:bool=False,
                  transform_train=None,
                  transform_valid=None):
-
         self.reproducible(seed=42)
         if find_lr:
             learning_rates = [None]
@@ -111,7 +110,6 @@ class RunManager():
             best_learning_rates = self.best_lr_for_hyperparameters()
         all_hyperparameters = [v for v in self.hyperparameters.values()]
         hyperparam_combination = namedtuple("hyperparam_combination", "lr epoch_number batch_size gamma weight_decay momentum shuffle gamma_step architecture")
-        
         for hyperparams in product(*all_hyperparameters):
             hyperparams = hyperparam_combination(*hyperparams)
             if not hyperparams.lr:
