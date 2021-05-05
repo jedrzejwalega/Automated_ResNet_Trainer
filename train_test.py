@@ -258,6 +258,7 @@ class RunManager():
     
     def save_model_if_best(self, result:namedtuple, hyperparams:namedtuple, epoch:int) -> None:
         if result.valid_loss < self.best_run.valid_loss:
+            self.best_run = None
             best_model = deepcopy(self.model)
             best_optimizer = deepcopy(self.optimizer)
             best_valid_loss = result.valid_loss
@@ -286,5 +287,5 @@ class RunManager():
 
     def write_best_model(self, path):
         print(f"Writing best model from epoch number {self.best_run.epoch}, lr={self.best_run.hyperparams.lr}, batch_size={self.best_run.hyperparams.batch_size}, gamma={self.best_run.hyperparams.gamma}, gamma_step={self.best_run.hyperparams.gamma_step}...")
-        torch.save(self.best_run.model.state_dict(), path)
+        torch.save(self.best_run.model, path)
         print("Done.")
