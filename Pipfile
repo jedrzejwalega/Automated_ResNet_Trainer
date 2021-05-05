@@ -7,6 +7,7 @@ name = "pypi"
 fastai = "*"
 torch = "*"
 tensorboard = "*"
+cuda = "*"
 
 [dev-packages]
 

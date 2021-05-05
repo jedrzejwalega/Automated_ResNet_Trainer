@@ -13,7 +13,7 @@ import torchvision
 from functools import partial
 from itertools import product
 from collections import namedtuple
-from pickle import dumps, loads
+from copy import deepcopy
 import fastai.learner
 import fastai.data
 from sys import float_info
@@ -188,7 +188,9 @@ class RunManager():
         images, labels = next(iter(self.train_loader))
         grid = torchvision.utils.make_grid(images)
         tb.add_image("First_batch", grid)
-        tb.add_graph(self.model, images.cuda())
+        if self.device == "cuda":
+            images = images.cuda()
+        tb.add_graph(self.model, images)
         return tb    
     
     def train_valid_one_epoch(self) -> namedtuple:
@@ -256,13 +258,13 @@ class RunManager():
     
     def save_model_if_best(self, result:namedtuple, hyperparams:namedtuple, epoch:int) -> None:
         if result.valid_loss < self.best_run.valid_loss:
-            best_model = dumps(self.model)
-            best_optimizer = dumps(self.optimizer)
+            best_model = deepcopy(self.model)
+            best_optimizer = deepcopy(self.optimizer)
             best_valid_loss = result.valid_loss
             self.best_run = self.run(best_valid_loss, best_model, best_optimizer, hyperparams, epoch)
 
     def test(self) -> None:
-        self.model = loads(self.best_run.model)
+        self.model = self.best_run.model
         self.make_dataloaders(batch_size=self.best_run.hyperparams.batch_size,
                                 shuffle=False,
                                 mode="test")
@@ -284,5 +286,5 @@ class RunManager():
 
     def write_best_model(self, path):
         print(f"Writing best model from epoch number {self.best_run.epoch}, lr={self.best_run.hyperparams.lr}, batch_size={self.best_run.hyperparams.batch_size}, gamma={self.best_run.hyperparams.gamma}, gamma_step={self.best_run.hyperparams.gamma_step}...")
-        torch.save(self.best_run.model, path)
+        torch.save(self.best_run.model.state_dict(), path)
         print("Done.")

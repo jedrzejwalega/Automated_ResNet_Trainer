@@ -40,11 +40,11 @@ def load_cifar10(dir_name:str, kind:str="train") -> None:
     else:
         file_list = test_list
 
-    dir_name = Path(dir_name)
+    dir_name = Path(dir_name + "/cifar10")
     all_images = []
     all_labels = []
     for file_name, checksum in file_list:
-        file_path = os.path.join("/home/jedrzej/Desktop/cifar10", file_name)
+        file_path = os.path.join(dir_name, file_name)
         with open(file_path, 'rb') as f:
             entry = pickle.load(f, encoding='latin1')
             all_images.append(entry['data'])
