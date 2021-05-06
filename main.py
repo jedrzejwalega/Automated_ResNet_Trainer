@@ -11,6 +11,7 @@ def main():
     args = input_data.get_user_input()
     cifar10_dataset.download_cifar10(args.path)
     train_images, train_labels = cifar10_dataset.load_cifar10(args.path)
+    print(train_labels)
     test_images, test_labels = cifar10_dataset.load_cifar10(args.path, kind="test")
     program = train_test.RunManager(learning_rates=args.learning_rates, 
                                     epochs=args.epochs,
