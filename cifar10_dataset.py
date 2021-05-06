@@ -57,13 +57,11 @@ def load_cifar10(dir_name:str, kind:str="train") -> None:
     all_images = all_images.transpose((0,2,3,1))
     return all_images, all_labels
 
-
 def unpack_data(dir_name: Path, filename: str) -> Tuple[torch.FloatTensor, torch.LongTensor]:
     data = unpickle(dir_name/"cifar10"/filename)
     images = torch.from_numpy(data["data"])
     labels = torch.tensor(data["labels"]).long()
     return (images, labels)
-
 
 def unpickle(file: str):
     with open(file, 'rb') as handle:
@@ -89,69 +87,3 @@ def augment_data_valid(image):
                                             normalize,])
     image = valid_transforms(image)
     return image
-
-
-# import torchvision.models as models
-# import torchvision.datasets as datasets
-# import torchvision.transforms as transforms
-
-
-# normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406],
-#                                      std=[0.229, 0.224, 0.225])
-
-# train_loader = torch.utils.data.DataLoader(
-#     datasets.CIFAR10(root='./data', train=True, transform=transforms.Compose([
-#         transforms.RandomHorizontalFlip(),
-#         transforms.RandomCrop(32, 4),
-#         transforms.ToTensor(),
-#         normalize,
-#     ]), download=True),
-#     batch_size=128, shuffle=True,
-#     num_workers=4, pin_memory=True)
-
-# test_loader = torch.utils.data.DataLoader(
-#     datasets.CIFAR10(root='./data', train=False, transform=transforms.Compose([
-#         transforms.ToTensor(),
-#         normalize,
-#     ])),
-#     batch_size=128, shuffle=False,
-#     num_workers=4, pin_memory=True)
-
-# train_images, train_labels = load_cifar10("/home/jedrzej/Desktop")
-# test_images, test_labels = load_cifar10("/home/jedrzej/Desktop", kind="test")
-
-# train_set = dataset.ImageDataset((train_images, train_labels), transform=augment_data_train)
-# test_set = dataset.ImageDataset((test_images, test_labels), transform=augment_data_valid)
-
-# train_loader_mine = torch.utils.data.DataLoader(train_set, batch_size=128, shuffle=True, num_workers=4, pin_memory=True)
-# test_loader_mine = torch.utils.data.DataLoader(test_set, batch_size=128, shuffle=False, num_workers=4, pin_memory=True)
-
-# cifar10_train = datasets.CIFAR10(root='~/Desktop/', train=True, download=False)
-
-# def reproducible(seed:int):
-#         random.seed(seed)
-#         np.random.seed(seed)
-#         torch.manual_seed(seed)
-#         torch.backends.cudnn.deterministic = True
-#         torch.backends.cudnn.benchmark = False
-
-# print((train_images == cifar10_train.data).all())
-# print(train_images == train_loader.dataset.data)
-# print(train_set.data[0] == train_loader.dataset.data)
-# for x in range(2):
-#     reproducible(43)
-#     first_pytorch = next(iter(train_loader))
-#     reproducible(43)
-#     first_mine = next(iter(train_loader_mine))
-#     print((first_pytorch[0] == first_mine[0]).all())
-
-
-# print(train_labels == cifar10_train.targets)
-
-# print(test_set.data[0] == test_loader.dataset.data)
-# for x in range(2):
-#     reproducible(43)
-#     first_pytorch = next(iter(test_loader))
-#     reproducible(43)
-#     first_mine = next(iter(test_loader_mine))
-#     print((first_pytorch[0] == first_mine[0]).all())

@@ -287,5 +287,7 @@ class RunManager():
 
     def write_best_model(self, path):
         print(f"Writing best model from epoch number {self.best_run.epoch}, lr={self.best_run.hyperparams.lr}, batch_size={self.best_run.hyperparams.batch_size}, gamma={self.best_run.hyperparams.gamma}, gamma_step={self.best_run.hyperparams.gamma_step}...")
-        torch.save(self.best_run.model, path)
+        state = {"state_dict":self.best_run.model.module.state_dict(),
+                 "optimizer":self.best_run.optimizer.state_dict()}
+        torch.save(state, path)
         print("Done.")
