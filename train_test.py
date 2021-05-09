@@ -113,7 +113,7 @@ class RunManager():
         for hyperparams in product(*all_hyperparameters):
             hyperparams = hyperparam_combination(*hyperparams)
             if not hyperparams.lr:
-                fitting_best_lr = best_learning_rates[(hyperparams.batch_size, hyperparams.shuffle)]
+                fitting_best_lr = best_learning_rates[(hyperparams.batch_size, hyperparams.shuffle, hyperparams.architecture)]
                 hyperparams = hyperparam_combination(fitting_best_lr, *hyperparams[1:])
             self.reproducible(seed=42)
             self.make_dataloaders(hyperparams.batch_size, shuffle=hyperparams.shuffle)
@@ -157,14 +157,14 @@ class RunManager():
     
     def best_lr_for_hyperparameters(self):
         best_learning_rates = {}
-        for batch_size, shuffle in product(*[self.hyperparameters["batch_size"], self.hyperparameters["shuffle"]]):
-            best_lr = self.find_best_lr(batch_size, shuffle)
-            best_learning_rates[(batch_size, shuffle)] = best_lr
+        for architecture, batch_size, shuffle in product(*[self.hyperparameters["architectures"], self.hyperparameters["batch_size"], self.hyperparameters["shuffle"]]):
+            best_lr = self.find_best_lr(batch_size, shuffle, architecture)
+            best_learning_rates[(batch_size, shuffle, architecture)] = best_lr
         return best_learning_rates
 
-    def find_best_lr(self, batch_size, shuffle=True) -> float:
+    def find_best_lr(self, batch_size, shuffle, architecture) -> float:
         self.reproducible(seed=42)
-        self.create_model()
+        self.create_model(architecture)
         self.model.train()
         dl_train = fastai.data.load.DataLoader(self.train_dataset, bs=batch_size, shuffle=shuffle)
         dl_valid = fastai.data.load.DataLoader(self.valid_dataset, bs=batch_size, shuffle=shuffle)
