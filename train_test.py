@@ -17,7 +17,7 @@ from copy import deepcopy
 import fastai.learner
 import fastai.data
 from sys import float_info
-from helper_functions import AverageMeter
+from utils import AverageMeter, calculate_accuracy, reproducible
 
 
 
@@ -36,7 +36,7 @@ class RunManager():
                  find_gamma_step:bool=False,
                  transform_train=None,
                  transform_valid=None):
-        self.reproducible(seed=42)
+        reproducible(seed=42)
         if find_lr:
             learning_rates = [None]
         self.find_gamma_step = find_gamma_step
@@ -69,13 +69,6 @@ class RunManager():
         self.run = namedtuple("run", "valid_loss model optimizer hyperparams epoch")
         self.best_run = self.run(float("inf"), None, None, None, None)
 
-    def reproducible(self, seed:int):
-        random.seed(seed)
-        np.random.seed(seed)
-        torch.manual_seed(seed)
-        torch.backends.cudnn.deterministic = True
-        torch.backends.cudnn.benchmark = False
-    
     def model_params(self, out_activations:int, in_channels:int=1):
         self.create_model = partial(self.create_model, out_activations=out_activations, in_channels=in_channels)
     
@@ -115,7 +108,7 @@ class RunManager():
             if not hyperparams.lr:
                 fitting_best_lr = best_learning_rates[(hyperparams.batch_size, hyperparams.shuffle, hyperparams.architecture)]
                 hyperparams = hyperparam_combination(fitting_best_lr, *hyperparams[1:])
-            self.reproducible(seed=42)
+            reproducible(seed=42)
             self.make_dataloaders(hyperparams.batch_size, shuffle=hyperparams.shuffle)
             self.create_model(hyperparams.architecture)
             self.create_optimizer(lr=hyperparams.lr, momentum=hyperparams.momentum, weight_decay=hyperparams.weight_decay)
@@ -163,7 +156,7 @@ class RunManager():
         return best_learning_rates
 
     def find_best_lr(self, batch_size, shuffle, architecture) -> float:
-        self.reproducible(seed=42)
+        reproducible(seed=42)
         self.create_model(architecture)
         self.model.train()
         dl_train = fastai.data.load.DataLoader(self.train_dataset, bs=batch_size, shuffle=shuffle)
@@ -206,7 +199,7 @@ class RunManager():
             train_batch_start = default_timer()
             batch_x, batch_y = batch_x.to(self.device), batch_y.to(self.device)
             pred = self.model(batch_x)
-            accuracy = self.accuracy(pred, batch_y)
+            accuracy = calculate_accuracy(pred, batch_y)
             train_accuracies.update(accuracy, batch_x.shape[0])
             loss = self.loss_func(pred, batch_y)
             train_losses.update(loss.item(), batch_x.shape[0])
@@ -222,7 +215,7 @@ class RunManager():
                 valid_batch_start = default_timer()
                 batch_x, batch_y = batch_x.to(self.device), batch_y.to(self.device)
                 pred = self.model(batch_x)
-                valid_accuracy = self.accuracy(pred, batch_y)
+                valid_accuracy = calculate_accuracy(pred, batch_y)
                 valid_accuracies.update(valid_accuracy, batch_x.shape[0])
                 loss = self.loss_func(pred, batch_y)
                 valid_losses.update(loss.item(), batch_x.shape[0])
@@ -231,12 +224,6 @@ class RunManager():
 
         return self.results(train_losses.avg, valid_losses.avg, train_accuracies.avg, valid_accuracies.avg, train_batch_times.avg, valid_batch_times.avg)
 
-    def accuracy(self, pred:torch.Tensor, batch_y:torch.Tensor):
-        predicted_classes = torch.argmax(pred, dim=1)
-        correct = (predicted_classes == batch_y).float().sum()
-        accuracy = (correct/batch_y.shape[0]).item()
-        return accuracy
-    
     def update_tensorboard_plots(self, tb:SummaryWriter, result:namedtuple, epoch:int) -> None:
         learning_rate = self.get_lr()
         for plot_title, value in [("Train_loss", result.train_loss),
@@ -277,7 +264,7 @@ class RunManager():
             for batch_x, batch_y in self.test_loader:
                 batch_x, batch_y = batch_x.to(self.device), batch_y.to(self.device)
                 pred = self.model(batch_x)
-                test_accuracy = self.accuracy(pred, batch_y)
+                test_accuracy = calculate_accuracy(pred, batch_y)
                 test_accuracies.append(test_accuracy)
                 loss = self.loss_func(pred, batch_y)
                 test_losses.append(loss.item())
