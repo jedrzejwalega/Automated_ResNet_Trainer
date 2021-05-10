@@ -12,7 +12,6 @@ def main():
     cifar10_dataset.download_cifar10(args.path)
     train_images, train_labels = cifar10_dataset.load_cifar10(args.path)
     test_images, test_labels = cifar10_dataset.load_cifar10(args.path, kind="test")
-    print(args.comment)
     program = train_test.RunManager(learning_rates=args.learning_rates, 
                                     epochs=args.epochs,
                                     shuffle=args.shuffle, 
