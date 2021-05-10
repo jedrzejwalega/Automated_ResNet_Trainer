@@ -12,6 +12,7 @@ def main():
     cifar10_dataset.download_cifar10(args.path)
     train_images, train_labels = cifar10_dataset.load_cifar10(args.path)
     test_images, test_labels = cifar10_dataset.load_cifar10(args.path, kind="test")
+    print(args.comment)
     program = train_test.RunManager(learning_rates=args.learning_rates, 
                                     epochs=args.epochs,
                                     shuffle=args.shuffle, 
@@ -23,7 +24,8 @@ def main():
                                     architectures=args.architecture,
                                     find_gamma_step=args.find_gamma_step,
                                     transform_train=cifar10_dataset.augment_data_train,
-                                    transform_valid=cifar10_dataset.augment_data_valid)
+                                    transform_valid=cifar10_dataset.augment_data_valid,
+                                    comment=args.comment)
     program.pass_datasets((train_images, train_labels), (test_images, test_labels))
     program.train()
     if args.test:

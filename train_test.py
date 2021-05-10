@@ -35,7 +35,8 @@ class RunManager():
                  gamma_step:List[int]=[3], 
                  find_gamma_step:bool=False,
                  transform_train=None,
-                 transform_valid=None):
+                 transform_valid=None,
+                 comment=""):
         reproducible(seed=42)
         if find_lr:
             learning_rates = [None]
@@ -68,6 +69,7 @@ class RunManager():
         self.results = namedtuple("results", "train_loss valid_loss train_accuracy valid_accuracy train_batch_time valid_batch_time")
         self.run = namedtuple("run", "valid_loss model optimizer hyperparams epoch")
         self.best_run = self.run(float("inf"), None, None, None, None)
+        self.comment = comment
 
     def model_params(self, out_activations:int, in_channels:int=1):
         self.create_model = partial(self.create_model, out_activations=out_activations, in_channels=in_channels)
@@ -177,7 +179,7 @@ class RunManager():
         self.optimizer = self.optimizer_algorythm(self.model.parameters(), lr=lr, momentum=momentum, weight_decay=weight_decay)
 
     def setup_tensorboard_basics(self, hyperparams:namedtuple) -> SummaryWriter:
-        tb = SummaryWriter(comment=f" {hyperparams.architecture} lr={hyperparams.lr} epochs={hyperparams.epoch_number} batch size={hyperparams.batch_size} gamma={hyperparams.gamma} gamma_step={hyperparams.gamma_step} shuffle={hyperparams.shuffle}")
+        tb = SummaryWriter(comment=f" {self.comment} architecture={hyperparams.architecture} lr={hyperparams.lr} epochs={hyperparams.epoch_number} batch size={hyperparams.batch_size} gamma={hyperparams.gamma} gamma_step={hyperparams.gamma_step} shuffle={hyperparams.shuffle}")
         images, labels = next(iter(self.train_loader))
         grid = torchvision.utils.make_grid(images)
         tb.add_image("First_batch", grid)

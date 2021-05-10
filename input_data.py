@@ -80,7 +80,11 @@ def get_user_input() -> argparse.Namespace:
     parser.add_argument("--find_gamma_step", "-fg", 
                         help="Whether to find a gamma step based on loss plot slope.",
                         action="store_true")
-
+    parser.add_argument("--comment", "-c",
+                        help="A string to add to the tensorboard results aside from hyperparameters (for example run id)",
+                        type=str,
+                        required=False)
+                        
     args = parser.parse_args()
     args.architecture = list(map(str.lower, args.architecture))
     available_nets = set(["resnet18", "resnet34", "resnet50", "resnet101", "resnet152"])
