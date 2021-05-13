@@ -84,12 +84,20 @@ def get_user_input() -> argparse.Namespace:
                         help="A string to add to the tensorboard results aside from hyperparameters (for example run id)",
                         type=str,
                         required=False)
+    parser.add_argument("--initialization", "-i", 
+                        nargs="+",
+                        type=str,
+                        help="""An arbitrary number strings representing different types of weight initialization. 
+                        If given, all of the weights in the model (excluding biases) will be initialized in this particular way, instead of Pytorch's default weight init for each layer type.
+                        Available weight inits: uniform, xavier, normal, ones, zeroes, eye, xavier_uniform, kaiming_uniform, kaiming_normal, orthogonal""",
+                        required=False)
                         
     args = parser.parse_args()
     args.architecture = list(map(str.lower, args.architecture))
     available_nets = set(["resnet18", "resnet34", "resnet50", "resnet101", "resnet152"])
     assert all(net in available_nets for net in args.architecture), "Given model architecture is not available"
+    available_inits = set(["uniform", "xavier", "normal", "ones", "zeroes", "eye", "xavier_uniform", "kaiming_uniform", "kaiming_normal", "orthogonal"])
+    assert all(init in available_inits for init in args.initialization), "Given weight initialization is not available"
     if args.find_lr:
         assert not args.learning_rates, "You cannot pass custom learning rates when using automatic best learning rate option"
-
     return args
