@@ -96,7 +96,7 @@ def get_user_input() -> argparse.Namespace:
     args.architecture = list(map(str.lower, args.architecture))
     available_nets = set(["resnet18", "resnet34", "resnet50", "resnet101", "resnet152"])
     assert all(net in available_nets for net in args.architecture), "Given model architecture is not available"
-    available_inits = set(["uniform", "xavier", "normal", "ones", "zeroes", "eye", "xavier_uniform", "kaiming_uniform", "kaiming_normal", "orthogonal"])
+    available_inits = set(["uniform", "xavier", "normal", "ones", "zeros", "eye", "xavier_uniform", "kaiming_uniform", "kaiming_normal", "orthogonal"])
     assert all(init in available_inits for init in args.initialization), "Given weight initialization is not available"
     if args.find_lr:
         assert not args.learning_rates, "You cannot pass custom learning rates when using automatic best learning rate option"

@@ -9,7 +9,7 @@ def init_model_weights(model, init_type:str):
                       "normal":torch.nn.init.normal_,
                       "ones":torch.nn.init.ones_,
                       "zeros":torch.nn.init.zeros_,
-                      "eye":torch.nn.init.eye,
+                      "eye":torch.nn.init.eye_,
                       "xavier_uniform":torch.nn.init.xavier_uniform_,
                       "kaiming_uniform":torch.nn.init.kaiming_uniform_,
                       "kaiming_normal":torch.nn.init.kaiming_normal_,
@@ -21,5 +21,5 @@ def init_model_weights(model, init_type:str):
 def init_layer_weights(layer, func):
     try:
         func(layer.weight)
-    except AttributeError:
+    except (AttributeError, ValueError) as e:
         return

@@ -18,7 +18,7 @@ import fastai.learner
 import fastai.data
 from sys import float_info
 from utils import AverageMeter, calculate_accuracy, reproducible
-
+import init_weights
 
 
 class RunManager():
@@ -36,7 +36,8 @@ class RunManager():
                  find_gamma_step:bool=False,
                  transform_train=None,
                  transform_valid=None,
-                 comment=""):
+                 comment="",
+                 initialization=["AUTO"]):
         reproducible(seed=42)
         if find_lr:
             learning_rates = [None]
@@ -51,7 +52,8 @@ class RunManager():
                                 momentum=momentum,
                                 shuffle=shuffle,
                                 gamma_step=gamma_step,
-                                architectures=architectures)
+                                architectures=architectures,
+                                initialization=initialization)
         self.transform_train = transform_train
         self.transform_valid = transform_valid
         self.model = None
@@ -104,7 +106,7 @@ class RunManager():
         if self.hyperparameters["learning_rates"] == [None]:
             best_learning_rates = self.best_lr_for_hyperparameters()
         all_hyperparameters = [v for v in self.hyperparameters.values()]
-        hyperparam_combination = namedtuple("hyperparam_combination", "lr epoch_number batch_size gamma weight_decay momentum shuffle gamma_step architecture")
+        hyperparam_combination = namedtuple("hyperparam_combination", "lr epoch_number batch_size gamma weight_decay momentum shuffle gamma_step architecture initialization")
         for hyperparams in product(*all_hyperparameters):
             hyperparams = hyperparam_combination(*hyperparams)
             if not hyperparams.lr:
@@ -121,9 +123,11 @@ class RunManager():
                 scheduler = torch.optim.lr_scheduler.MultiStepLR(self.optimizer, milestones=scheduler_milestones, verbose=True, gamma=hyperparams.gamma)
             self.model = torch.nn.DataParallel(self.model)
             self.model = self.model.to(self.device)
+            if hyperparams.initialization != "AUTO":
+                init_weights.init_model_weights(self.model, init_type=hyperparams.initialization)
             tb = self.setup_tensorboard_basics(hyperparams)
 
-            print(f"Starting training," 
+            print(f"Starting training, " 
                   f"architecture={hyperparams.architecture}, " 
                   f"lr={hyperparams.lr}, " 
                   f"batch size={hyperparams.batch_size}, " 
@@ -131,7 +135,8 @@ class RunManager():
                   f"momentum={hyperparams.momentum}, " 
                   f"weight decay={hyperparams.weight_decay}, " 
                   f"shuffle={hyperparams.shuffle}, " 
-                  f"gamma step={hyperparams.gamma_step} " 
+                  f"gamma step={hyperparams.gamma_step}, "
+                  f"initialization={hyperparams.initialization} " 
                   f"for {hyperparams.epoch_number} epochs")
 
             for epoch in range(hyperparams.epoch_number):
@@ -139,7 +144,11 @@ class RunManager():
                 start = default_timer()
                 result = self.train_valid_one_epoch()
                 stop = default_timer()
-                self.update_tensorboard_plots(tb, result, epoch)
+                try:
+                    self.update_tensorboard_plots(tb, result, epoch)
+                except ValueError:
+                    print("A NaN value was reached during training. Aborting the training of this model.")
+                    break
                 self.save_model_if_best(result, hyperparams, epoch+1)
                 print(f"Finished epoch {epoch+1} in {stop-start}s; train loss: {result.train_loss}, valid loss: {result.valid_loss}; train accuracy: {result.train_accuracy*100}%, valid_accuracy: {result.valid_accuracy*100}%")
                 if self.find_gamma_step:
@@ -179,7 +188,7 @@ class RunManager():
         self.optimizer = self.optimizer_algorythm(self.model.parameters(), lr=lr, momentum=momentum, weight_decay=weight_decay)
 
     def setup_tensorboard_basics(self, hyperparams:namedtuple) -> SummaryWriter:
-        tb = SummaryWriter(comment=f" {self.comment} architecture={hyperparams.architecture} lr={hyperparams.lr} epochs={hyperparams.epoch_number} batch size={hyperparams.batch_size} gamma={hyperparams.gamma} gamma_step={hyperparams.gamma_step} shuffle={hyperparams.shuffle}")
+        tb = SummaryWriter(comment=f" {self.comment} architecture={hyperparams.architecture} lr={hyperparams.lr} epochs={hyperparams.epoch_number} batch size={hyperparams.batch_size} gamma={hyperparams.gamma} gamma_step={hyperparams.gamma_step} shuffle={hyperparams.shuffle} initialization={hyperparams.initialization}")
         images, labels = next(iter(self.train_loader))
         grid = torchvision.utils.make_grid(images)
         tb.add_image("First_batch", grid)

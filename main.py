@@ -24,7 +24,8 @@ def main():
                                     find_gamma_step=args.find_gamma_step,
                                     transform_train=cifar10_dataset.augment_data_train,
                                     transform_valid=cifar10_dataset.augment_data_valid,
-                                    comment=args.comment)
+                                    comment=args.comment,
+                                    initialization=args.initialization)
     program.pass_datasets((train_images, train_labels), (test_images, test_labels))
     program.train()
     if args.test:
